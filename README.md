@@ -4,7 +4,7 @@
 
 ---
 
-## 🚢 What It Does
+## What It Does
 
 MariNav models real-world vessel navigation by:
 
