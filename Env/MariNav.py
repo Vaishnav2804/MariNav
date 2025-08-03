@@ -689,3 +689,43 @@ class MariNav(gym.Env):
                 self.csv_header_written = True
             writer.writerows(self.csv_buffer)
         self.csv_buffer.clear()
+
+class MariNavWithHistory(gym.Wrapper):
+    """
+    A Gym wrapper to append a history of observations to the current observation.
+    This is useful for models like MinGRU/RNN that process sequences.
+    """
+    def __init__(self, env: gym.Env, history_len: int = DEFAULT_HISTORY_LEN):
+        super().__init__(env)
+        self.history_len = history_len
+        self.obs_buffer: list[np.ndarray] = []
+
+        obs_space = env.observation_space
+        # The observation space for the wrapped environment is flattened
+        # to be compatible with `MinGRUFeaturesExtractor`.
+        self.observation_space = spaces.Box(
+            low=np.repeat(obs_space.low, history_len),
+            high=np.repeat(obs_space.high, history_len),
+            shape=(obs_space.shape[0] * history_len,), # Flattened shape
+            dtype=np.float32
+        )
+
+    def reset(self, **kwargs) -> tuple[np.ndarray, dict]:
+        """
+        Resets the environment and initializes the observation buffer with
+        the first observation repeated `history_len` times.
+        """
+        obs, info = self.env.reset(**kwargs)
+        self.obs_buffer = [obs] * self.history_len
+        return np.concatenate(self.obs_buffer, axis=0), info
+
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
+        """
+        Takes a step in the environment, appends the new observation to the buffer,
+        and returns the concatenated history as the observation.
+        """
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        self.obs_buffer.append(obs)
+        self.obs_buffer = self.obs_buffer[-self.history_len:] # Keep only the latest `history_len` observations
+        stacked_obs = np.concatenate(self.obs_buffer, axis=0)
+        return stacked_obs, reward, terminated, truncated, info
