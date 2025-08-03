@@ -228,4 +228,5 @@ You must provide:
 * [Uber H3](https://h3geo.org/)
 * [GeoPandas](https://geopandas.org/)
 * [NetworkX](https://networkx.org/)
+* [Perplexity](https://www.perplexity.ai/)
 ---
