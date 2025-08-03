@@ -152,15 +152,6 @@ Multi-discrete:
 
 ## Advanced Options
 
-### Sequence Learning Support
-
-Wrap the environment for RNNs:
-
-```python
-from tanker_environment import TankerEnvWithHistory
-env = TankerEnvWithHistory(base_env, history_len=8)
-```
-
 ### Custom Reward Tuning
 
 Modify constants in `MariNav.py`:
