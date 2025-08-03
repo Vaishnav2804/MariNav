@@ -1,7 +1,8 @@
 # MariNav - Maritime Route Optimization using Reinforcement Learning
 
 `MariNav` is a reinforcement learning (RL) environment built to simulate and optimize tanker navigation across oceanic routes represented by H3 hexagonal grids. It integrates real-world wind data, historical route frequencies, and fuel consumption models, allowing agents to learn efficient and realistic maritime paths under environmental constraints.
-This environment is compatible with both `PPO` and `MaskablePPO` from Stable-Baselines3 and `sb3-contrib`, making it suitable for training with or without action masking support.
+
+**This environment is compatible with `PPO` and `MaskablePPO` from Stable-Baselines3 and `sb3-contrib`, making it suitable for training with or without action masking support.** It also supports intrinsic exploration techniques such as `RND` (Random Network Distillation) from the `rllte.xplore.reward` module.
 
 ---
 
@@ -19,7 +20,6 @@ pip install -r requirements.txt
 
 ```python
 from Env.MariNav import MariNav
-from stable_baselines3 import PPO
 from sb3_contrib import MaskablePPO
 import networkx as nx
 
@@ -46,6 +46,20 @@ env = MariNav(
 
 model = MaskablePPO("MlpPolicy", env, verbose=1) # Or use PPO
 model.learn(total_timesteps=100_000)
+```
+
+### Using Random Network Distillation
+
+```python
+from rllte.xplore.reward import RND
+from rllte.xplore.wrapper import RLeXploreWithOnPolicyRL
+from stable_baselines3 import PPO
+
+irs = RND(vec_env, device="cpu")
+
+model = PPO("MlpPolicy", env, verbose=1)
+
+model.learn(total_timesteps=240_000_000, callback=RLeXploreWithOnPolicyRL(irs))
 ```
 
 ---
@@ -223,4 +237,5 @@ You must provide:
 * [GeoPandas](https://geopandas.org/)
 * [NetworkX](https://networkx.org/)
 * [Perplexity](https://www.perplexity.ai/)
+* [RLeXplore](https://github.com/RLE-Foundation/RLeXplore)
 ---
