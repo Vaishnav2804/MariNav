@@ -62,7 +62,7 @@ DEFAULT_PATIENCE = 200
 DEFAULT_MIN_DELTA = 2.0
 
 
-class TankerEnvironment(gym.Env):
+class MariNav(gym.Env):
     """
     A reinforcement learning environment for simulating a tanker's movement
     across H3 hexagonal grid cells, considering wind conditions and fuel consumption.
@@ -70,7 +70,7 @@ class TankerEnvironment(gym.Env):
     def __init__(self, graph: nx.Graph, wind_map: dict, h3_pool: list[str],
                  h3_resolution: int = H3_RESOLUTION, wind_threshold: float = DEFAULT_WIND_THRESHOLD,render_mode: str = None):
         """
-        Initializes the TankerEnvironment.
+        Initializes the MariNav.
 
         Args:
             graph (nx.Graph): A NetworkX graph representing navigable H3 cells.

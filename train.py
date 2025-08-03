@@ -23,8 +23,8 @@ from stable_baselines3.common.utils import get_linear_fn
 from stable_baselines3.common.utils import get_schedule_fn
 # Local application/specific imports
 import matplotlib
-from MariNav.TankerEnvironment import *
-from MariNav.Callbacks import *
+from Env.MariNav import *
+from Env.Callbacks import *
 from utils import *
 from multiprocessing import Manager
 
@@ -47,7 +47,7 @@ GRAPH_PATH = "GULF_VISITS_CARGO_TANKER_AUGUST_2018.gexf" # File path to a GEXF f
 
 def make_env():
     def _init():
-        base_env = TankerEnvironment(
+        base_env = MariNav(
             h3_pool=H3_POOL,
             graph=G_visits,
             wind_map=full_wind_map,
