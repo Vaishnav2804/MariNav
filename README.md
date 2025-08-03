@@ -1,7 +1,8 @@
 # MariNav - Maritime Route Optimization using Reinforcement Learning
 
 `MariNav` is a reinforcement learning (RL) environment built to simulate and optimize tanker navigation across oceanic routes represented by H3 hexagonal grids. It integrates real-world wind data, historical route frequencies, and fuel consumption models, allowing agents to learn efficient and realistic maritime paths under environmental constraints.
-This environment is compatible with both `PPO` and `MaskablePPO` from Stable-Baselines3 and `sb3-contrib`, making it suitable for training with or without action masking support.
+
+**This environment is compatible with `PPO` and `MaskablePPO` from Stable-Baselines3 and `sb3-contrib`, making it suitable for training with or without action masking support.** It also supports intrinsic exploration techniques such as `RND` (Random Network Distillation) from the `rllte.xplore.reward` module.
 
 ---
 
@@ -46,6 +47,23 @@ env = MariNav(
 
 model = MaskablePPO("MlpPolicy", env, verbose=1) # Or use PPO
 model.learn(total_timesteps=100_000)
+```
+
+### Using Random Network Distillation
+
+```python
+from rllte.xplore.reward import RND
+from rllte.xplore.wrapper import RLeXploreWithOnPolicyRL
+
+irs = RND(vec_env, device="cpu")
+callback = CallbackList([
+    eval_callback,
+    early_stop,
+    step_logger,
+    info_logging_callback,
+    RLeXploreWithOnPolicyRL(irs)
+])
+model.learn(total_timesteps=240_000_000, callback=callback)
 ```
 
 ---
@@ -223,4 +241,20 @@ You must provide:
 * [GeoPandas](https://geopandas.org/)
 * [NetworkX](https://networkx.org/)
 * [Perplexity](https://www.perplexity.ai/)
+* [RLeXplore](https://github.com/RLE-Foundation/RLeXplore)
+---
+
+To cite the inspiration clearly and professionally in your `README.md`, you can add an **Acknowledgment** or **Citation** section like this:
+
+---
+
+## Citation
+
+The weighted graph used in `MariNav` was inspired by the following research:
+
+**Learning Spatio-Temporal Vessel Behavior using AIS Trajectory Data and Markovian Models in the Gulf of St. Lawrence**
+*Google Scholar:* [https://scholar.google.ca/citations?view\_op=view\_citation\&hl=en\&user=aiL559gAAAAJ\&citation\_for\_view=aiL559gAAAAJ:9yKSN-GCB0IC](https://scholar.google.ca/citations?view_op=view_citation&hl=en&user=aiL559gAAAAJ&citation_for_view=aiL559gAAAAJ:9yKSN-GCB0IC)
+
+This work helped guide the design of the frequency-weighted transition graph for maritime routing in the Gulf of St. Lawrence.
+
 ---
