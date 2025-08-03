@@ -239,3 +239,20 @@ You must provide:
 * [Perplexity](https://www.perplexity.ai/)
 * [RLeXplore](https://github.com/RLE-Foundation/RLeXplore)
 ---
+
+To cite the inspiration clearly and professionally in your `README.md`, you can add an **Acknowledgment** or **Citation** section like this:
+
+---
+
+## Citation
+
+The weighted graph used in `MariNav` was inspired by the following research:
+
+**Learning Spatio-Temporal Vessel Behavior using AIS Trajectory Data and Markovian Models in the Gulf of St. Lawrence**
+*Google Scholar:* [https://scholar.google.ca/citations?view\_op=view\_citation\&hl=en\&user=aiL559gAAAAJ\&citation\_for\_view=aiL559gAAAAJ:9yKSN-GCB0IC](https://scholar.google.ca/citations?view_op=view_citation&hl=en&user=aiL559gAAAAJ&citation_for_view=aiL559gAAAAJ:9yKSN-GCB0IC)
+
+This work helped guide the design of the frequency-weighted transition graph for maritime routing in the Gulf of St. Lawrence.
+
+---
+
+
