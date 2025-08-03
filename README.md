@@ -44,7 +44,7 @@ env = MariNav(
     render_mode="human"
 )
 
-model = MaskablePPO("MlpPolicy", env, verbose=1)
+model = MaskablePPO("MlpPolicy", env, verbose=1) # Or use PPO
 model.learn(total_timesteps=100_000)
 ```
 
