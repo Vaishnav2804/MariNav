@@ -258,3 +258,5 @@ The weighted graph used in `MariNav` was inspired by the following research:
 This work helped guide the design of the frequency-weighted transition graph for maritime routing in the Gulf of St. Lawrence.
 
 ---
+
+
