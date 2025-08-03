@@ -4,46 +4,6 @@
 
 ---
 
-## What It Does
-
-MariNav models real-world vessel navigation by:
-
-* Using **H3 grids** to represent navigable ocean regions
-* Integrating **timestamped wind data**
-* Leveraging **historical route usage** from AIS-derived graphs
-* Providing **multi-objective rewards** for training robust RL agents
-
----
-
-## Features
-
-### Maritime Environment
-
-* **Hex-Based Ocean Model**: Built using Uber H3 (resolution 6)
-* **Graph Navigation**: Based on real ship visits stored in a weighted `NetworkX` graph
-* **Wind-Aware Dynamics**: Wind speed and direction influence vessel speed and fuel
-* **Dynamic Action Space**: Multi-discrete choices over neighbor cells + discrete speeds
-
-### Multi-Objective Reward Function
-
-The reward function combines:
-
-* **Progress Reward** – distance reduction toward the goal
-* **Fuel Penalty** – penalizes fuel-heavy maneuvers
-* **Wind Penalty** – penalizes adverse wind alignment
-* **Alignment Penalty** – penalizes angular misalignment with wind
-* **ETA Penalty** – encourages timely arrival
-* **Frequency Reward** – rewards travel along historically common routes
-
-### Logging and Visualization
-
-* TensorBoard metrics for each reward component
-* Route frequency analysis and pair visitation tracking
-* Matplotlib + GeoPandas-based rendering (headless safe)
-* CSV logging of each episode and step-level transition
-
----
-
 ## Installation
 
 ```bash
@@ -88,6 +48,48 @@ model.learn(total_timesteps=100_000)
 ```
 
 ---
+
+## What It Does
+
+MariNav models real-world vessel navigation by:
+
+* Using **H3 grids** to represent navigable ocean regions
+* Integrating **timestamped wind data**
+* Leveraging **historical route usage** from AIS-derived graphs
+* Providing **multi-objective rewards** for training robust RL agents
+
+---
+
+## Features
+
+### Maritime Environment
+
+* **Hex-Based Ocean Model**: Built using Uber H3 (resolution 6)
+* **Graph Navigation**: Based on real ship visits stored in a weighted `NetworkX` graph
+* **Wind-Aware Dynamics**: Wind speed and direction influence vessel speed and fuel
+* **Dynamic Action Space**: Multi-discrete choices over neighbor cells + discrete speeds
+
+### Multi-Objective Reward Function
+
+The reward function combines:
+
+* **Progress Reward** – distance reduction toward the goal
+* **Fuel Penalty** – penalizes fuel-heavy maneuvers
+* **Wind Penalty** – penalizes adverse wind alignment
+* **Alignment Penalty** – penalizes angular misalignment with wind
+* **ETA Penalty** – encourages timely arrival
+* **Frequency Reward** – rewards travel along historically common routes
+
+### Logging and Visualization
+
+* TensorBoard metrics for each reward component
+* Route frequency analysis and pair visitation tracking
+* Matplotlib + GeoPandas-based rendering (headless safe)
+* CSV logging of each episode and step-level transition
+
+---
+
+
 
 ## Training with VecEnvs and Callbacks
 
