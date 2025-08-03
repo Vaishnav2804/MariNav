@@ -55,7 +55,7 @@ from rllte.xplore.reward import RND
 from rllte.xplore.wrapper import RLeXploreWithOnPolicyRL
 from stable_baselines3 import PPO
 
-irs = RND(vec_env, device="cpu")
+irs = RND(env, device="cpu")
 
 model = PPO("MlpPolicy", env, verbose=1)
 
