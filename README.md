@@ -2,6 +2,7 @@
 
 `MariNav` is a reinforcement learning (RL) environment built to simulate and optimize tanker navigation across oceanic routes represented by H3 hexagonal grids. It integrates real-world wind data, historical route frequencies, and fuel consumption models, allowing agents to learn efficient and realistic maritime paths under environmental constraints.
 This environment is compatible with both `PPO` and `MaskablePPO` from Stable-Baselines3 and `sb3-contrib`, making it suitable for training with or without action masking support.
+
 ---
 
 ## Installation
