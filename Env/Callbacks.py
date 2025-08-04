@@ -1,10 +1,10 @@
+import hashlib
 import os
 
 import numpy as np
-import hashlib
-
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
+
 
 class EarlyStoppingCallback(BaseCallback):
     """
@@ -27,9 +27,15 @@ class EarlyStoppingCallback(BaseCallback):
     :param verbose: Verbosity level, passed to the `BaseCallback` constructor.
                     (0 for no output, 1 for info, 2 for debug).
     """
-    
-    def __init__(self, log_path: str, patience: int = 10, min_delta: float = 1.0,
-                 check_freq: int = 10000, verbose: int = 1):
+
+    def __init__(
+        self,
+        log_path: str,
+        patience: int = 10,
+        min_delta: float = 1.0,
+        check_freq: int = 10000,
+        verbose: int = 1,
+    ):
         super().__init__(verbose)
         self.log_path = log_path
         self.patience = patience
@@ -48,18 +54,26 @@ class EarlyStoppingCallback(BaseCallback):
                     if rewards.shape[0] > 0:
                         latest_mean = np.mean(rewards[-1])
                         if self.verbose:
-                            print(f"[EarlyStopping] Step {self.num_timesteps}: mean eval reward = {latest_mean:.2f}")
+                            print(
+                                f"[EarlyStopping] Step {self.num_timesteps}: mean eval reward = {latest_mean:.2f}"
+                            )
 
-                        model_path = os.path.join(self.log_path, f"model_step_{self.num_timesteps}")
+                        model_path = os.path.join(
+                            self.log_path, f"model_step_{self.num_timesteps}"
+                        )
                         self.model.save(model_path)
 
                         if latest_mean > self.best_mean_reward + self.min_delta:
-                            print(f"✅ New best model! Mean reward improved from {self.best_mean_reward:.2f} to {latest_mean:.2f}")
+                            print(
+                                f"✅ New best model! Mean reward improved from {self.best_mean_reward:.2f} to {latest_mean:.2f}"
+                            )
                             self.best_mean_reward = latest_mean
                             self.counter = 0
                         else:
                             self.counter += 1
-                            print(f"[EarlyStopping] No improvement for {self.counter} evaluations")
+                            print(
+                                f"[EarlyStopping] No improvement for {self.counter} evaluations"
+                            )
 
                         if self.counter >= self.patience:
                             print("🛑 Early stopping triggered.")
@@ -82,6 +96,7 @@ class StepRewardLoggerCallback(BaseCallback):
     :param verbose: Verbosity level, passed to the `BaseCallback` constructor.
                     (0 for no output, 1 for info, 2 for debug).
     """
+
     def __init__(self, verbose=0):
         super().__init__(verbose)
 
@@ -91,8 +106,10 @@ class StepRewardLoggerCallback(BaseCallback):
                 self.logger.record("reward/step_reward", info["reward_per_step"])
         return True
 
+
 def short_hash(s, length=8):
     return hashlib.md5(s.encode()).hexdigest()[:length]
+
 
 class InfoLoggingCallback(BaseCallback):
     """
@@ -119,10 +136,14 @@ class InfoLoggingCallback(BaseCallback):
             self._log_if_present(info, "self_progress_reward", "step/progress_reward")
             self._log_if_present(info, "self_frequency_reward", "step/frequency_reward")
             self._log_if_present(info, "self_wind_penalty", "step/wind_penalty")
-            self._log_if_present(info, "self_alignment_penalty", "step/alignment_penalty")
+            self._log_if_present(
+                info, "self_alignment_penalty", "step/alignment_penalty"
+            )
             self._log_if_present(info, "self_fuel_penalty", "step/fuel_penalty")
             self._log_if_present(info, "self_eta_penalty", "step/eta_penalty")
-            self._log_if_present(info, "self_base_step_penalty", "step/base_step_penalty")
+            self._log_if_present(
+                info, "self_base_step_penalty", "step/base_step_penalty"
+            )
             self._log_if_present(info, "self_total_reward", "step/total_step_reward")
 
             self._log_if_present(info, "reward_per_step", "step/reward_per_step")
@@ -135,25 +156,36 @@ class InfoLoggingCallback(BaseCallback):
                     self.logger.record(tb_key, count)
 
             if "pair_selection_counts" in info:
-                    for path_key, count in info["pair_selection_counts"].items():
-                        short_key = short_hash(path_key)
-                        tb_key = f"episode/pair_selected/{short_key}"
-                        self.logger.record(tb_key, count)
+                for path_key, count in info["pair_selection_counts"].items():
+                    short_key = short_hash(path_key)
+                    tb_key = f"episode/pair_selected/{short_key}"
+                    self.logger.record(tb_key, count)
 
             # -------- Per-Episode Logging --------
             if "epi" in info:
                 episode_info = info["epi"]
                 self._log_if_present(episode_info, "r", "episode/total_reward")
                 self._log_if_present(episode_info, "l", "episode/length")
-                self._log_if_present(episode_info, "progress_reward", "episode/progress_reward")
-                self._log_if_present(episode_info, "frequency_reward", "episode/frequency_reward")
-                self._log_if_present(episode_info, "wind_penalty", "episode/wind_penalty")
-                self._log_if_present(episode_info, "alignment_penalty", "episode/alignment_penalty")
-                self._log_if_present(episode_info, "fuel_penalty", "episode/fuel_penalty")
+                self._log_if_present(
+                    episode_info, "progress_reward", "episode/progress_reward"
+                )
+                self._log_if_present(
+                    episode_info, "frequency_reward", "episode/frequency_reward"
+                )
+                self._log_if_present(
+                    episode_info, "wind_penalty", "episode/wind_penalty"
+                )
+                self._log_if_present(
+                    episode_info, "alignment_penalty", "episode/alignment_penalty"
+                )
+                self._log_if_present(
+                    episode_info, "fuel_penalty", "episode/fuel_penalty"
+                )
                 self._log_if_present(episode_info, "eta_penalty", "episode/eta_penalty")
-                self._log_if_present(episode_info, "base_step_penalty", "episode/base_step_penalty")
+                self._log_if_present(
+                    episode_info, "base_step_penalty", "episode/base_step_penalty"
+                )
 
-                
         return True
 
     def _log_if_present(self, info_dict, key, tb_key):

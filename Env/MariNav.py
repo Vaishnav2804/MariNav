@@ -1,24 +1,24 @@
 # Standard library imports
-import random
 import csv
+import math  # Import math for pi
+import os
+import random
 from collections import defaultdict
 from datetime import datetime, timedelta
-import math # Import math for pi
-import os
+
+import contextily as ctx
+
 # Third-party library imports
+# Local application/specific imports
 import geopandas as gpd
 import gymnasium as gym
-from gymnasium import spaces
 import h3
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
-# Local application/specific imports
-import geopandas as gpd
-import contextily as ctx
+from gymnasium import spaces
 from shapely.geometry import Polygon
-
 
 # --- Constants and Configuration ---
 # Define common constants used in the environment
@@ -27,7 +27,7 @@ MIN_SPEED_KNOTS = 8.0
 MAX_SPEED_KNOTS = 22.0
 NUM_SPEED_LEVELS = 5
 H3_RESOLUTION = 6
-DEFAULT_WIND_THRESHOLD = 10.0 # m/s
+DEFAULT_WIND_THRESHOLD = 10.0  # m/s
 DEFAULT_HORIZON_MULTIPLIER = 5
 
 # Reward coefficients
@@ -36,10 +36,12 @@ INVALID_MOVE_PENALTY = -1900
 PROGRESS_REWARD_FACTOR = 2
 FREQUENCY_REWARD_CLIP = 0.5
 WIND_PENALTY_VALUE = -1.0
-ALIGNMENT_PENALTY_FACTOR = -2.0 / math.pi # From -1.0 * (angle_diff / np.pi) but simplified
+ALIGNMENT_PENALTY_FACTOR = (
+    -2.0 / math.pi
+)  # From -1.0 * (angle_diff / np.pi) but simplified
 FUEL_PENALTY_SCALE = -0.001
 ETA_PENALTY_SCALE = -0.001
-SPEED_BONUS_FACTOR = 0.3 # Not used for now.
+SPEED_BONUS_FACTOR = 0.3  # Not used for now.
 BASE_STEP_PENALTY = -1
 
 # Fuel consumption parameters
@@ -67,8 +69,16 @@ class MariNav(gym.Env):
     A reinforcement learning environment for simulating a tanker's movement
     across H3 hexagonal grid cells, considering wind conditions and fuel consumption.
     """
-    def __init__(self, graph: nx.Graph, wind_map: dict, h3_pool: list[str],
-                 h3_resolution: int = H3_RESOLUTION, wind_threshold: float = DEFAULT_WIND_THRESHOLD,render_mode: str = None):
+
+    def __init__(
+        self,
+        graph: nx.Graph,
+        wind_map: dict,
+        h3_pool: list[str],
+        h3_resolution: int = H3_RESOLUTION,
+        wind_threshold: float = DEFAULT_WIND_THRESHOLD,
+        render_mode: str = None,
+    ):
         """
         Initializes the MariNav.
 
@@ -90,7 +100,7 @@ class MariNav(gym.Env):
         self.valid_hex_ids = set(self.graph.nodes)
         self.wind_map = wind_map
         self.wind_threshold = wind_threshold
-        self.h3_pool  = h3_pool
+        self.h3_pool = h3_pool
         self.pair_selection_counts = defaultdict(int)
         self.h3_resolution = h3_resolution
         self.render_mode = render_mode
@@ -99,13 +109,15 @@ class MariNav(gym.Env):
         for hexagon in self.h3_pool:
             if hexagon not in self.graph:
                 raise ValueError(f"Start H3 cell {hexagon} not in graph.")
-        
+
         self.start_h3: str | None = None
         self.goal_h3: str | None = None
-        self.observation_space = spaces.Box(low=OBS_LOW_BOUND, high=OBS_HIGH_BOUND, shape=(8,), dtype=np.float32)
+        self.observation_space = spaces.Box(
+            low=OBS_LOW_BOUND, high=OBS_HIGH_BOUND, shape=(8,), dtype=np.float32
+        )
 
         self.speed_range = (MIN_SPEED_KNOTS, MAX_SPEED_KNOTS)
-        self.k = 5 # Maximum number of neighbors to consider for action space
+        self.k = 5  # Maximum number of neighbors to consider for action space
         self.action_space = spaces.MultiDiscrete([self.k, NUM_SPEED_LEVELS])
 
         self._distance_cache = {}
@@ -116,13 +128,21 @@ class MariNav(gym.Env):
         self.csv_file_path = CSV_FILE_PATH
         self.csv_header_written = False
         self.visited_path_counts = defaultdict(int)  # key: (start_h3, goal_h3)
-        self.max_distance_reference = self._shortest_path_length(self.h3_pool[0], self.h3_pool[1]) if len(self.h3_pool) > 1 else self._shortest_path_length(self.h3_pool[0], self.h3_pool[2])
+        self.max_distance_reference = (
+            self._shortest_path_length(self.h3_pool[0], self.h3_pool[1])
+            if len(self.h3_pool) > 1
+            else self._shortest_path_length(self.h3_pool[0], self.h3_pool[2])
+        )
         self.reset()
 
         try:
-            self.max_distance = nx.shortest_path_length(self.graph, self.start_h3, self.goal_h3)
+            self.max_distance = nx.shortest_path_length(
+                self.graph, self.start_h3, self.goal_h3
+            )
         except nx.NetworkXNoPath:
-            raise ValueError(f"No path exists from {self.start_h3} to {self.goal_h3} in water-only graph.")
+            raise ValueError(
+                f"No path exists from {self.start_h3} to {self.goal_h3} in water-only graph."
+            )
 
         if self.max_distance > 100:
             self.horizon = int(self.max_distance * DEFAULT_HORIZON_MULTIPLIER)
@@ -131,14 +151,15 @@ class MariNav(gym.Env):
         else:
             self.horizon = int(self.max_distance * 1.5)
 
-
     def _shortest_path_length(self, src: str, dst: str) -> int:
         key = (src, dst)
         if key not in self._distance_cache:
             if src not in self.graph or dst not in self.graph:
                 raise ValueError(f"[Path Error] {src} or {dst} not in graph.")
             try:
-                self._distance_cache[key] = nx.shortest_path_length(G=self.graph, source=src,target= dst)
+                self._distance_cache[key] = nx.shortest_path_length(
+                    G=self.graph, source=src, target=dst
+                )
             except nx.NetworkXNoPath:
                 raise RuntimeError(f"[Path Error] No path from {src} to {dst}")
         return self._distance_cache[key]
@@ -146,10 +167,10 @@ class MariNav(gym.Env):
     def action_masks(self) -> list[np.ndarray]:
         """
         Returns action masks for MultiDiscrete action space.
-        
+
         For MultiDiscrete spaces, this should return a list of boolean arrays,
         one for each sub-action space.
-        
+
         Returns:
             list[np.ndarray]: List containing [neighbor_mask, speed_mask]
                             where each mask is a boolean array
@@ -158,9 +179,9 @@ class MariNav(gym.Env):
         neighbors = self._get_valid_neighbors()
 
         # Step 1: Remove prev_h3 if it's there
-        if hasattr(self, 'prev_h3') and self.prev_h3 in all_neighbors:
+        if hasattr(self, "prev_h3") and self.prev_h3 in all_neighbors:
             all_neighbors.remove(self.prev_h3)
-        
+
         # Step 2: Now ensure len == self.k (e.g. 5) by removing ONE non-valid neighbor
         if len(all_neighbors) > self.k:
             if self.current_h3 in all_neighbors:
@@ -179,19 +200,23 @@ class MariNav(gym.Env):
 
         # Now all_neighbors is of length self.k, and contains as many valid neighbors as possible
         assert len(all_neighbors) == self.k
-            
+
         # Neighbor mask
-        neighbor_mask = np.zeros(self.k, dtype=bool)  # self.k = len(all_neighbors) assumed
+        neighbor_mask = np.zeros(
+            self.k, dtype=bool
+        )  # self.k = len(all_neighbors) assumed
         neighbors = self._get_valid_neighbors()
 
         if neighbors:
-            valid_indices = [all_neighbors.index(n) for n in neighbors if n in all_neighbors]
+            valid_indices = [
+                all_neighbors.index(n) for n in neighbors if n in all_neighbors
+            ]
             neighbor_mask[valid_indices] = True
-        
+
         # Mask for speed selection (second sub-action)
         # All speeds are always valid regardless of position
         speed_mask = np.ones(NUM_SPEED_LEVELS, dtype=bool)
-        
+
         return [neighbor_mask, speed_mask]
 
     def _set_latlon_bounds(self) -> None:
@@ -203,7 +228,9 @@ class MariNav(gym.Env):
         self.min_lat, self.max_lat = min(lats), max(lats)
         self.min_lon, self.max_lon = min(lons), max(lons)
 
-    def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
+    def reset(
+        self, *, seed: int | None = None, options: dict | None = None
+    ) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed)
 
         # All possible (start, goal) pairs where start ≠ goal
@@ -217,7 +244,9 @@ class MariNav(gym.Env):
             if not self.visited_path_counts:
                 selected_idx = np.random.choice(len(pairs))
             else:
-                counts = np.array([self.visited_path_counts.get((s, g), 0) for (s, g) in pairs])
+                counts = np.array(
+                    [self.visited_path_counts.get((s, g), 0) for (s, g) in pairs]
+                )
                 max_count = max(counts.max(), 1)
                 weights = max_count - counts + 1
                 probs = weights / weights.sum()
@@ -225,7 +254,7 @@ class MariNav(gym.Env):
         else:
             # Uniform random sampling
             selected_idx = np.random.choice(len(pairs))
-            
+
         self.start_h3, self.goal_h3 = pairs[selected_idx]
         key = (self.start_h3, self.goal_h3)
         self.pair_selection_counts[key] = self.pair_selection_counts.get(key, 0) + 1
@@ -249,16 +278,15 @@ class MariNav(gym.Env):
         self.current_time = datetime(2018, 8, random_day, random_hour, 0)
         self.episode_start_time = self.current_time
 
-
         total_distance_m = self._shortest_path_length(self.start_h3, self.goal_h3)
-        self.target_eta = total_distance_m / (10 * KNOTS_TO_MPS)  # seconds, assuming 10 knots
+        self.target_eta = total_distance_m / (
+            10 * KNOTS_TO_MPS
+        )  # seconds, assuming 10 knots
         self.eta_window = 1800  # ±30 minutes in seconds
 
         self._set_latlon_bounds()
 
         return self._get_observation(), {}
-    
-
 
     def _get_valid_neighbors(self) -> list[str]:
         """
@@ -270,9 +298,16 @@ class MariNav(gym.Env):
             neighbors.remove(self.prev_h3)
         return neighbors
 
-    def _calculate_rewards(self, distance_before: int, distance_after: int,
-                           speed: float, wind_speed: float, move_direction: float,
-                           wind_direction: float, override_reward: bool) -> float:
+    def _calculate_rewards(
+        self,
+        distance_before: int,
+        distance_after: int,
+        speed: float,
+        wind_speed: float,
+        move_direction: float,
+        wind_direction: float,
+        override_reward: bool,
+    ) -> float:
         """
         Calculates the various reward components for the current step.
         """
@@ -283,21 +318,25 @@ class MariNav(gym.Env):
         progress_reward = PROGRESS_REWARD_FACTOR * (distance_before - distance_after)
 
         # Frequency reward: based on historical visit frequency of the edge
-        edge_weight = self.graph[self.prev_h3][self.current_h3].get('weight', 1)
-        frequency_reward = np.clip(np.log1p(edge_weight)/5, 0, FREQUENCY_REWARD_CLIP)
+        edge_weight = self.graph[self.prev_h3][self.current_h3].get("weight", 1)
+        frequency_reward = np.clip(np.log1p(edge_weight) / 5, 0, FREQUENCY_REWARD_CLIP)
 
         # Wind penalty: if wind speed exceeds threshold
         wind_penalty = WIND_PENALTY_VALUE if wind_speed > self.wind_threshold else 0.0
 
         # Alignment penalty: for sailing against the wind
-        angle_diff = np.arccos(np.clip(np.cos(move_direction - wind_direction), -1.0, 1.0))
+        angle_diff = np.arccos(
+            np.clip(np.cos(move_direction - wind_direction), -1.0, 1.0)
+        )
         alignment_penalty = ALIGNMENT_PENALTY_FACTOR * angle_diff
 
         # Speed bonus: positive reward for moving when progress is made
         # speed_bonus = SPEED_BONUS_FACTOR * speed if progress_reward > 0 else 0
 
         # Fuel penalty: based on estimated fuel consumption
-        fuel_consumed = self._estimate_fuel(speed, wind_speed, move_direction, wind_direction)
+        fuel_consumed = self._estimate_fuel(
+            speed, wind_speed, move_direction, wind_direction
+        )
         fuel_penalty = FUEL_PENALTY_SCALE * fuel_consumed
 
         # ETA penalty: based on travel time (encourages faster routes)
@@ -308,27 +347,25 @@ class MariNav(gym.Env):
         base_step_penalty = BASE_STEP_PENALTY
 
         total_reward = (
-            progress_reward +
-            frequency_reward +
-            wind_penalty +
-            alignment_penalty +
-            fuel_penalty +
-            eta_penalty +
-            base_step_penalty
+            progress_reward
+            + frequency_reward
+            + wind_penalty
+            + alignment_penalty
+            + fuel_penalty
+            + eta_penalty
+            + base_step_penalty
         )
 
         return {
-            'total_reward': total_reward,
-            'progress_reward': progress_reward,
-            'frequency_reward': frequency_reward,
-            'wind_penalty': wind_penalty,
-            'alignment_penalty': alignment_penalty,
-            'fuel_penalty': fuel_penalty,
-            'eta_penalty': eta_penalty,
-            'base_step_penalty': base_step_penalty
+            "total_reward": total_reward,
+            "progress_reward": progress_reward,
+            "frequency_reward": frequency_reward,
+            "wind_penalty": wind_penalty,
+            "alignment_penalty": alignment_penalty,
+            "fuel_penalty": fuel_penalty,
+            "eta_penalty": eta_penalty,
+            "base_step_penalty": base_step_penalty,
         }
-
-
 
     def _get_current_wind_conditions(self) -> tuple[float, float, float]:
         """
@@ -338,7 +375,7 @@ class MariNav(gym.Env):
         h3_wind_data = self.wind_map.get(self.current_h3, {})
 
         if not h3_wind_data:
-            return 0.0, 0.0, 0.0, 0.0 # No wind data available
+            return 0.0, 0.0, 0.0, 0.0  # No wind data available
 
         # Find closest timestamp from h3_wind_data to self.current_time
         target_time = pd.Timestamp(self.current_time)
@@ -346,12 +383,13 @@ class MariNav(gym.Env):
         wind_u, wind_v = h3_wind_data[closest_time]
 
         wind_speed = np.sqrt(wind_u**2 + wind_v**2)
-        wind_direction = np.arctan2(wind_v, wind_u) # Radians
+        wind_direction = np.arctan2(wind_v, wind_u)  # Radians
 
         return wind_u, wind_v, wind_speed, wind_direction
 
-
-    def step(self, action: tuple[int, int]) -> tuple[np.ndarray, float, bool, bool, dict]:
+    def step(
+        self, action: tuple[int, int]
+    ) -> tuple[np.ndarray, float, bool, bool, dict]:
         """
         Takes one step in the environment given an action.
 
@@ -371,7 +409,9 @@ class MariNav(gym.Env):
 
         neighbor_idx, speed_level = action
         # neighbor_idx, speed_level = action
-        speed = np.linspace(self.speed_range[0], self.speed_range[1], NUM_SPEED_LEVELS)[speed_level]
+        speed = np.linspace(self.speed_range[0], self.speed_range[1], NUM_SPEED_LEVELS)[
+            speed_level
+        ]
 
         neighbors = self._get_valid_neighbors()
         ring = h3.grid_ring(self.current_h3)
@@ -380,18 +420,36 @@ class MariNav(gym.Env):
             ring.remove(self.prev_h3)
 
         if not neighbors:
-            return self._get_observation(), -1900, True, False, {"reason": "no valid neighbors"}
+            return (
+                self._get_observation(),
+                -1900,
+                True,
+                False,
+                {"reason": "no valid neighbors"},
+            )
 
         # Step 1: Check ring index range
         if neighbor_idx >= len(ring):
-            return self._get_observation(), -1900, True, False, {"reason": "neighbor_idx out of ring bounds"}
+            return (
+                self._get_observation(),
+                -1900,
+                True,
+                False,
+                {"reason": "neighbor_idx out of ring bounds"},
+            )
 
         # Step 2: Get candidate neighbor from ring
         candidate = ring[neighbor_idx]
 
         # Step 3: Make sure it's in valid neighbors
         if candidate not in neighbors:
-            return self._get_observation(), -1900, True, False, {"reason": "selected ring neighbor not in valid neighbors"}
+            return (
+                self._get_observation(),
+                -1900,
+                True,
+                False,
+                {"reason": "selected ring neighbor not in valid neighbors"},
+            )
 
         # Step 4: It's valid
         selected_neighbor = candidate
@@ -408,13 +466,19 @@ class MariNav(gym.Env):
         except nx.NetworkXNoPath:
             # No valid path exists — strongly penalize the move
             # Invalid move — path is blocked (likely due to land)
-            return self._get_observation(), INVALID_MOVE_PENALTY, False, True, {
-                "reason": "no ocean path to goal",
-                "current_h3": self.current_h3,
-                "selected_neighbor": selected_neighbor,
-                "goal_h3": self.goal_h3,
-                "step_count": self.step_count
-            }
+            return (
+                self._get_observation(),
+                INVALID_MOVE_PENALTY,
+                False,
+                True,
+                {
+                    "reason": "no ocean path to goal",
+                    "current_h3": self.current_h3,
+                    "selected_neighbor": selected_neighbor,
+                    "goal_h3": self.goal_h3,
+                    "step_count": self.step_count,
+                },
+            )
 
         travel_time = self._estimate_travel_time(speed)
         self.current_time += timedelta(seconds=travel_time)
@@ -427,25 +491,33 @@ class MariNav(gym.Env):
         wind_u, wind_v, wind_speed, wind_direction = self._get_current_wind_conditions()
 
         # Compute vessel movement direction (heading)
-        lat1, lon1 = h3.cell_to_latlng(self.prev_h3) if self.prev_h3 else (0,0) # Handle initial step
+        lat1, lon1 = (
+            h3.cell_to_latlng(self.prev_h3) if self.prev_h3 else (0, 0)
+        )  # Handle initial step
         lat2, lon2 = h3.cell_to_latlng(self.current_h3)
         move_direction = np.arctan2(lat2 - lat1, lon2 - lon1) if self.prev_h3 else 0.0
 
-        calculated_rewards = self._calculate_rewards(distance_before, distance_after,
-                                         speed, wind_speed, move_direction,
-                                         wind_direction, override_reward)
-        
-        self.step_wind_penalty = calculated_rewards['wind_penalty']
-        self.step_alignment_penalty = calculated_rewards['alignment_penalty']
-        self.step_fuel_penalty = calculated_rewards['fuel_penalty']
-        self.step_eta_penalty = calculated_rewards['eta_penalty']
-        self.step_base_step_penalty = calculated_rewards['base_step_penalty']
-        self.step_progress_reward = calculated_rewards['progress_reward']
-        self.step_frequency_reward = calculated_rewards['frequency_reward']
-        self.step_total_reward = calculated_rewards['total_reward']
-        
-        self.episode_reward += calculated_rewards['total_reward']
-        self.episode_wind_penalty +=  self.step_wind_penalty
+        calculated_rewards = self._calculate_rewards(
+            distance_before,
+            distance_after,
+            speed,
+            wind_speed,
+            move_direction,
+            wind_direction,
+            override_reward,
+        )
+
+        self.step_wind_penalty = calculated_rewards["wind_penalty"]
+        self.step_alignment_penalty = calculated_rewards["alignment_penalty"]
+        self.step_fuel_penalty = calculated_rewards["fuel_penalty"]
+        self.step_eta_penalty = calculated_rewards["eta_penalty"]
+        self.step_base_step_penalty = calculated_rewards["base_step_penalty"]
+        self.step_progress_reward = calculated_rewards["progress_reward"]
+        self.step_frequency_reward = calculated_rewards["frequency_reward"]
+        self.step_total_reward = calculated_rewards["total_reward"]
+
+        self.episode_reward += calculated_rewards["total_reward"]
+        self.episode_wind_penalty += self.step_wind_penalty
         self.episode_alignment_penalty += self.step_alignment_penalty
         self.episode_fuel_penalty += self.step_fuel_penalty
         self.episode_eta_penalty += self.step_eta_penalty
@@ -456,73 +528,92 @@ class MariNav(gym.Env):
         if terminated:
             key = (self.start_h3, self.goal_h3)
             self.visited_path_counts[key] = self.visited_path_counts.get(key, 0) + 1
-            print(f"Hurray! Goal reached! Start_H3: {self.start_h3}, Goal_H3: {self.goal_h3}, "
-                  f"Step Count: {self.step_count}, Episode Reward: {self.episode_reward}")
+            print(
+                f"Hurray! Goal reached! Start_H3: {self.start_h3}, Goal_H3: {self.goal_h3}, "
+                f"Step Count: {self.step_count}, Episode Reward: {self.episode_reward}"
+            )
             self.step_total_reward += GOAL_REWARD
 
-        self.step_total_reward = (self.step_total_reward / self.max_distance) * self.max_distance_reference
+        self.step_total_reward = (
+            self.step_total_reward / self.max_distance
+        ) * self.max_distance_reference
 
         if done:
-            info.update({
-            "epi": {
-                "r": self.episode_reward,
-                "l": self.step_count,
-                "progress_reward": self.episode_progress_reward,
-                "frequency_reward": self.episode_frequency_reward,
-                "wind_penalty": self.episode_wind_penalty,
-                "alignment_penalty": self.episode_alignment_penalty,
-                "fuel_penalty": self.episode_fuel_penalty,
-                "eta_penalty": self.episode_eta_penalty,
-                "base_step_penalty": self.episode_base_step_penalty,
-            },
-            "visited_path_counts": {
-                f"{s}->{g}": count for (s, g), count in self.visited_path_counts.items()
-            },
-            "pair_selection_counts": {
-            f"{s}->{g}": count for (s, g), count in self.pair_selection_counts.items()
-        }
-        })
-            
-        info['distance_before'] = distance_before
-        info['distance_after'] = distance_after
+            info.update(
+                {
+                    "epi": {
+                        "r": self.episode_reward,
+                        "l": self.step_count,
+                        "progress_reward": self.episode_progress_reward,
+                        "frequency_reward": self.episode_frequency_reward,
+                        "wind_penalty": self.episode_wind_penalty,
+                        "alignment_penalty": self.episode_alignment_penalty,
+                        "fuel_penalty": self.episode_fuel_penalty,
+                        "eta_penalty": self.episode_eta_penalty,
+                        "base_step_penalty": self.episode_base_step_penalty,
+                    },
+                    "visited_path_counts": {
+                        f"{s}->{g}": count
+                        for (s, g), count in self.visited_path_counts.items()
+                    },
+                    "pair_selection_counts": {
+                        f"{s}->{g}": count
+                        for (s, g), count in self.pair_selection_counts.items()
+                    },
+                }
+            )
 
-        info.update({
-            "terminated": terminated,
-            "truncated": truncated,
-            "step_count": self.step_count,
-            "current_h3": self.current_h3,
-            "prev_h3": self.prev_h3,
-            "distance_to_goal": distance_after,
-            "override_reward": override_reward,
+        info["distance_before"] = distance_before
+        info["distance_after"] = distance_after
 
-            # Step-level reward components with self_ prefix
-            "self_progress_reward": self.step_progress_reward,
-            "self_frequency_reward": self.step_frequency_reward,
-            "self_wind_penalty": self.step_wind_penalty,
-            "self_alignment_penalty": self.step_alignment_penalty,
-            "self_fuel_penalty": self.step_fuel_penalty,
-            "self_eta_penalty": self.step_eta_penalty,
-            "self_base_step_penalty": self.step_base_step_penalty,
-            "self_total_reward": self.step_total_reward,
-
-            # Environment dynamics
-            "speed": speed,
-            "current_time": self.current_time,
-            "wind_direction": wind_direction,
-            "move_direction": move_direction,
-        })
+        info.update(
+            {
+                "terminated": terminated,
+                "truncated": truncated,
+                "step_count": self.step_count,
+                "current_h3": self.current_h3,
+                "prev_h3": self.prev_h3,
+                "distance_to_goal": distance_after,
+                "override_reward": override_reward,
+                # Step-level reward components with self_ prefix
+                "self_progress_reward": self.step_progress_reward,
+                "self_frequency_reward": self.step_frequency_reward,
+                "self_wind_penalty": self.step_wind_penalty,
+                "self_alignment_penalty": self.step_alignment_penalty,
+                "self_fuel_penalty": self.step_fuel_penalty,
+                "self_eta_penalty": self.step_eta_penalty,
+                "self_base_step_penalty": self.step_base_step_penalty,
+                "self_total_reward": self.step_total_reward,
+                # Environment dynamics
+                "speed": speed,
+                "current_time": self.current_time,
+                "wind_direction": wind_direction,
+                "move_direction": move_direction,
+            }
+        )
 
         info["step_action_continuous"] = action
         info["step_action_discrete"] = (neighbor_idx, speed_level)
-        info["reward_per_step"] = self.step_total_reward  
+        info["reward_per_step"] = self.step_total_reward
 
         # self.buffer_selected_info(info) # Uncomment to reactivate CSV logging
         self.trajectory.append(self.current_h3)
 
-        return self._get_observation(speed, wind_direction), self.step_total_reward , terminated, truncated, info
+        return (
+            self._get_observation(speed, wind_direction),
+            self.step_total_reward,
+            terminated,
+            truncated,
+            info,
+        )
 
-    def _estimate_fuel(self, speed: float, wind_speed: float,
-                       move_direction: float, wind_direction: float) -> float:
+    def _estimate_fuel(
+        self,
+        speed: float,
+        wind_speed: float,
+        move_direction: float,
+        wind_direction: float,
+    ) -> float:
         """
         Estimates the fuel consumed during a step based on vessel speed, wind speed,
         and the alignment between vessel movement and wind direction.
@@ -542,7 +633,10 @@ class MariNav(gym.Env):
         # Adjust drag: worse (higher) when sailing against the wind (angle_factor is low)
         adjusted_drag = 1 + FUEL_DRAG_FACTOR * (1 - angle_factor)
         # Fuel consumption formula: (speed^3 component adjusted by drag) + (wind_speed component)
-        return FUEL_SPEED_FACTOR * (speed ** 3) * adjusted_drag + FUEL_WIND_FACTOR * wind_speed
+        return (
+            FUEL_SPEED_FACTOR * (speed**3) * adjusted_drag
+            + FUEL_WIND_FACTOR * wind_speed
+        )
 
     def _estimate_travel_time(self, speed: float) -> float:
         """
@@ -555,16 +649,24 @@ class MariNav(gym.Env):
         Returns:
             float: Estimated travel time in seconds.
         """
-        meters_per_h3_grid_unit = h3.average_hexagon_edge_length(self.h3_resolution, unit='m')
+        meters_per_h3_grid_unit = h3.average_hexagon_edge_length(
+            self.h3_resolution, unit="m"
+        )
 
-        grid_distance = 1 if self.prev_h3 is None else h3.grid_distance(self.prev_h3, self.current_h3)
+        grid_distance = (
+            1
+            if self.prev_h3 is None
+            else h3.grid_distance(self.prev_h3, self.current_h3)
+        )
 
         distance_m = grid_distance * meters_per_h3_grid_unit
 
         speed_mps = speed * KNOTS_TO_MPS
-        return distance_m / max(speed_mps, 1e-6) # Avoid division by zero
+        return distance_m / max(speed_mps, 1e-6)  # Avoid division by zero
 
-    def _get_observation(self, speed: float = MIN_SPEED_KNOTS, wind_direction: float = 0.0) -> np.ndarray:
+    def _get_observation(
+        self, speed: float = MIN_SPEED_KNOTS, wind_direction: float = 0.0
+    ) -> np.ndarray:
         """
         Generates the observation array for the agent.
 
@@ -577,6 +679,7 @@ class MariNav(gym.Env):
                     [norm_lat, norm_lon, norm_speed, norm_wind_dir,
                     norm_start_lat, norm_start_lon, norm_goal_lat, norm_goal_lon]
         """
+
         def normalize_latlon(h3_index):
             lat, lon = h3.cell_to_latlng(h3_index)
             norm_lat = (lat - self.min_lat) / (self.max_lat - self.min_lat)
@@ -599,18 +702,26 @@ class MariNav(gym.Env):
         norm_goal_lat, norm_goal_lon = normalize_latlon(self.goal_h3)
 
         # Final observation
-        obs = np.array([
-            norm_lat, norm_lon, norm_speed, norm_wind_dir,
-            norm_start_lat, norm_start_lon,
-            norm_goal_lat, norm_goal_lon
-        ], dtype=np.float32)
+        obs = np.array(
+            [
+                norm_lat,
+                norm_lon,
+                norm_speed,
+                norm_wind_dir,
+                norm_start_lat,
+                norm_start_lon,
+                norm_goal_lat,
+                norm_goal_lon,
+            ],
+            dtype=np.float32,
+        )
 
         obs = np.nan_to_num(obs, nan=0.0, posinf=OBS_HIGH_BOUND, neginf=OBS_LOW_BOUND)
         assert np.all(np.isfinite(obs)), f"Non-finite obs: {obs}"
         return obs
 
-    def render(self, mode: str = 'human') -> None:
-        if mode != 'human':
+    def render(self, mode: str = "human") -> None:
+        if mode != "human":
             super().render(mode=mode)
             return
 
@@ -634,7 +745,9 @@ class MariNav(gym.Env):
 
         # Current position
         current_poly = Polygon(h3.cell_to_boundary(self.current_h3))
-        current_gdf = gpd.GeoDataFrame([{"geometry": current_poly}], crs="EPSG:4326").to_crs(epsg=3857)
+        current_gdf = gpd.GeoDataFrame(
+            [{"geometry": current_poly}], crs="EPSG:4326"
+        ).to_crs(epsg=3857)
 
         # Plot
         fig, ax = plt.subplots(figsize=(10, 10))
@@ -682,7 +795,7 @@ class MariNav(gym.Env):
             return
 
         write_header = not self.csv_header_written
-        with open(self.csv_file_path, mode='a', newline='') as csvfile:
+        with open(self.csv_file_path, mode="a", newline="") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=self.csv_buffer[0].keys())
             if write_header:
                 writer.writeheader()
@@ -690,11 +803,13 @@ class MariNav(gym.Env):
             writer.writerows(self.csv_buffer)
         self.csv_buffer.clear()
 
+
 class MariNavWithHistory(gym.Wrapper):
     """
     A Gym wrapper to append a history of observations to the current observation.
     This is useful for models like MinGRU/RNN that process sequences.
     """
+
     def __init__(self, env: gym.Env, history_len: int = DEFAULT_HISTORY_LEN):
         super().__init__(env)
         self.history_len = history_len
@@ -706,8 +821,8 @@ class MariNavWithHistory(gym.Wrapper):
         self.observation_space = spaces.Box(
             low=np.repeat(obs_space.low, history_len),
             high=np.repeat(obs_space.high, history_len),
-            shape=(obs_space.shape[0] * history_len,), # Flattened shape
-            dtype=np.float32
+            shape=(obs_space.shape[0] * history_len,),  # Flattened shape
+            dtype=np.float32,
         )
 
     def reset(self, **kwargs) -> tuple[np.ndarray, dict]:
@@ -726,6 +841,8 @@ class MariNavWithHistory(gym.Wrapper):
         """
         obs, reward, terminated, truncated, info = self.env.step(action)
         self.obs_buffer.append(obs)
-        self.obs_buffer = self.obs_buffer[-self.history_len:] # Keep only the latest `history_len` observations
+        self.obs_buffer = self.obs_buffer[
+            -self.history_len :
+        ]  # Keep only the latest `history_len` observations
         stacked_obs = np.concatenate(self.obs_buffer, axis=0)
         return stacked_obs, reward, terminated, truncated, info
