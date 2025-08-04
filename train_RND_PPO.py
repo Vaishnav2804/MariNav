@@ -24,8 +24,8 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 # Local application/specific imports
 import matplotlib
 
-from TankerGRL.TankerEnvironment import *
-from TankerGRL.Callbacks import *
+from Env.MariNav import *
+from Env.Callbacks import *
 from utils import *
 from multiprocessing import Manager
 from rllte.xplore.reward import RND
@@ -107,7 +107,7 @@ global_visited_path_counts = manager.dict()  # shared across processes
 
 def make_env():
     def _init():
-        env = TankerEnvironment(
+        env = MariNav(
             h3_pool=H3_POOL,
             graph=G_visits,
             wind_map=full_wind_map,
@@ -121,8 +121,7 @@ def make_env():
 
 if __name__ == "__main__":
     mp.set_start_method("fork", force=True)
-    # start_h3 = "862b256dfffffff"
-    # goal_h3 = "862b160d7ffffff"
+
     print(f"Loading wind map from {WIND_MAP_PATH}...")
     full_wind_map = load_full_wind_map(WIND_MAP_PATH)
     print(f"Loading graph from {GRAPH_PATH}...")
@@ -174,7 +173,7 @@ if __name__ == "__main__":
     
     eval_callback = EvalCallback(
     eval_env=vec_env,  # Wrap with Monitor
-    best_model_save_path=f"./ppo_gulf_tanker_minGRU_240000000_{timestamp}",
+    best_model_save_path=f"./ppo_gulf_tanker_RND_240000000_{timestamp}",
     log_path="./eval_logs",  # important!
     eval_freq=8000,
     deterministic=False,

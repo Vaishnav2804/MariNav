@@ -22,8 +22,8 @@ from stable_baselines3.common.utils import get_schedule_fn
 # Local application/specific imports
 import matplotlib
 
-from TankerGRL.TankerEnvironment import *
-from TankerGRL.Callbacks import *
+from Env.MariNav import *
+from Env.Callbacks import *
 from utils import *
 from multiprocessing import Manager
 
@@ -49,7 +49,7 @@ global_visited_path_counts = manager.dict()  # shared across processes
 
 def make_env():
     def _init():
-        env = TankerEnvironment(
+        env = MariNav(
             h3_pool=H3_POOL,
             graph=G_visits,
             wind_map=full_wind_map,
@@ -63,8 +63,6 @@ def make_env():
 
 if __name__ == "__main__":
     mp.set_start_method("fork", force=True)
-    # start_h3 = "862b256dfffffff"
-    # goal_h3 = "862b160d7ffffff"
     print(f"Loading wind map from {WIND_MAP_PATH}...")
     full_wind_map = load_full_wind_map(WIND_MAP_PATH)
     print(f"Loading graph from {GRAPH_PATH}...")
@@ -85,7 +83,6 @@ if __name__ == "__main__":
     learning_rate_schedule = get_linear_fn(start=7e-4, end=1e-5, end_fraction=1.0)
     # 3. Instantiate PPO model
 
-    # model = PPO.load("Multi_GOAL_test/ppo_gulf_tanker_minGRU_120000000_20250716_033235/best_model", env=vec_env)
 
     model = PPO(
     policy="MlpPolicy",             
@@ -112,7 +109,7 @@ if __name__ == "__main__":
     
     eval_callback = EvalCallback(
     eval_env=vec_env,  # Wrap with Monitor
-    best_model_save_path=f"./ppo_gulf_tanker_minGRU_240000000_{timestamp}",
+    best_model_save_path=f"./ppo_gulf_tanker_MLP_PPO_240000000_{timestamp}",
     log_path="./eval_logs",  # important!
     eval_freq=8000,
     deterministic=False,

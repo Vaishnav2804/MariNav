@@ -82,7 +82,6 @@ if __name__ == "__main__":
     learning_rate_schedule = get_linear_fn(start=7e-4, end=1e-5, end_fraction=1.0)
     # 3. Instantiate PPO model
 
-    # model = PPO.load("Multi_GOAL_test/ppo_gulf_tanker_minGRU_120000000_20250716_033235/best_model", env=vec_env)
 
     model = MaskablePPO(
     policy="MlpPolicy",             
@@ -109,7 +108,7 @@ if __name__ == "__main__":
     
     eval_callback = EvalCallback(
     eval_env=vec_env,  # Wrap with Monitor
-    best_model_save_path=f"./ppo_gulf_tanker_minGRU_120000000_{timestamp}",
+    best_model_save_path=f"./ppo_gulf_tanker_PPO_MASKED_120000000_{timestamp}",
     log_path="./eval_logs",  # important!
     eval_freq=8000,
     deterministic=False,
