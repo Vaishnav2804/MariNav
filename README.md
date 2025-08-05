@@ -73,6 +73,11 @@ MariNav models real-world vessel navigation by:
 * Leveraging **historical route usage** from AIS-derived graphs
 * Providing **multi-objective rewards** for training robust RL agents
 
+  <img width="1316" height="430" alt="image" src="https://github.com/user-attachments/assets/277ccf0d-f9ad-4038-a790-3fe58ac41810" />
+
+* We can use MariNav to compute best path for a given pair of H3 cells in a continuous observation space. 
+
+
 ---
 
 ## Features
