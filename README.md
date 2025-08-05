@@ -71,6 +71,12 @@ model = PPO("MlpPolicy", env, verbose=1)
 model.learn(total_timesteps=240_000_000, callback=RLeXploreWithOnPolicyRL(irs))
 ```
 
+## Example Experiment Results
+
+<img width="1735" height="647" alt="image" src="https://github.com/user-attachments/assets/f59f597a-a823-47ef-b6ca-664af4703970" />
+
+PPO with action masks comparatively performes better than the standard PPO with MLP policy - (For the given environment) -- Play around to figure out more!
+
 ---
 
 ## What It Does
