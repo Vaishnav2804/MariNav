@@ -405,6 +405,7 @@ class MariNav(gym.Env):
                 - info (dict): A dictionary containing additional information about the step.
         """
         info: dict = {}
+        info["revisiting_loop"] = 0
         override_reward = False
 
         neighbor_idx, speed_level = action
@@ -414,6 +415,7 @@ class MariNav(gym.Env):
         ]
 
         neighbors = self._get_valid_neighbors()
+
         ring = h3.grid_ring(self.current_h3)
 
         if self.prev_h3 in ring:
@@ -480,6 +482,19 @@ class MariNav(gym.Env):
                 },
             )
 
+        if self.current_h3 in self.trajectory:
+            info["revisiting_loop"] += 1
+            return (
+                self._get_observation(),
+                -1900,
+                True,
+                False,
+                info,
+            )
+
+        # self.buffer_selected_info(info) # Uncomment to reactivate CSV logging
+        self.trajectory.append(self.current_h3)
+
         travel_time = self._estimate_travel_time(speed)
         self.current_time += timedelta(seconds=travel_time)
 
@@ -507,23 +522,14 @@ class MariNav(gym.Env):
             override_reward,
         )
 
-        self.step_wind_penalty = calculated_rewards["wind_penalty"]
-        self.step_alignment_penalty = calculated_rewards["alignment_penalty"]
-        self.step_fuel_penalty = calculated_rewards["fuel_penalty"]
-        self.step_eta_penalty = calculated_rewards["eta_penalty"]
-        self.step_base_step_penalty = calculated_rewards["base_step_penalty"]
-        self.step_progress_reward = calculated_rewards["progress_reward"]
-        self.step_frequency_reward = calculated_rewards["frequency_reward"]
-        self.step_total_reward = calculated_rewards["total_reward"]
-
-        self.episode_reward += calculated_rewards["total_reward"]
-        self.episode_wind_penalty += self.step_wind_penalty
-        self.episode_alignment_penalty += self.step_alignment_penalty
-        self.episode_fuel_penalty += self.step_fuel_penalty
-        self.episode_eta_penalty += self.step_eta_penalty
-        self.episode_base_step_penalty += self.step_base_step_penalty
-        self.episode_progress_reward += self.step_progress_reward
-        self.episode_frequency_reward += self.step_frequency_reward
+        step_wind_penalty = calculated_rewards["wind_penalty"]
+        step_alignment_penalty = calculated_rewards["alignment_penalty"]
+        step_fuel_penalty = calculated_rewards["fuel_penalty"]
+        step_eta_penalty = calculated_rewards["eta_penalty"]
+        step_base_step_penalty = calculated_rewards["base_step_penalty"]
+        step_progress_reward = calculated_rewards["progress_reward"]
+        step_frequency_reward = calculated_rewards["frequency_reward"]
+        step_total_reward = calculated_rewards["total_reward"]
 
         if terminated:
             key = (self.start_h3, self.goal_h3)
@@ -532,11 +538,20 @@ class MariNav(gym.Env):
                 f"Hurray! Goal reached! Start_H3: {self.start_h3}, Goal_H3: {self.goal_h3}, "
                 f"Step Count: {self.step_count}, Episode Reward: {self.episode_reward}"
             )
-            self.step_total_reward += GOAL_REWARD
+            step_total_reward += GOAL_REWARD
 
-        self.step_total_reward = (
-            self.step_total_reward / self.max_distance
+        step_total_reward = (
+            step_total_reward / self.max_distance
         ) * self.max_distance_reference
+
+        self.episode_reward += step_total_reward
+        self.episode_wind_penalty += step_wind_penalty
+        self.episode_alignment_penalty += step_alignment_penalty
+        self.episode_fuel_penalty += step_fuel_penalty
+        self.episode_eta_penalty += step_eta_penalty
+        self.episode_base_step_penalty += step_base_step_penalty
+        self.episode_progress_reward += step_progress_reward
+        self.episode_frequency_reward += step_frequency_reward
 
         if done:
             info.update(
@@ -576,14 +591,14 @@ class MariNav(gym.Env):
                 "distance_to_goal": distance_after,
                 "override_reward": override_reward,
                 # Step-level reward components with self_ prefix
-                "self_progress_reward": self.step_progress_reward,
-                "self_frequency_reward": self.step_frequency_reward,
-                "self_wind_penalty": self.step_wind_penalty,
-                "self_alignment_penalty": self.step_alignment_penalty,
-                "self_fuel_penalty": self.step_fuel_penalty,
-                "self_eta_penalty": self.step_eta_penalty,
-                "self_base_step_penalty": self.step_base_step_penalty,
-                "self_total_reward": self.step_total_reward,
+                "self_progress_reward": step_progress_reward,
+                "self_frequency_reward": step_frequency_reward,
+                "self_wind_penalty": step_wind_penalty,
+                "self_alignment_penalty": step_alignment_penalty,
+                "self_fuel_penalty": step_fuel_penalty,
+                "self_eta_penalty": step_eta_penalty,
+                "self_base_step_penalty": step_base_step_penalty,
+                "self_total_reward": step_total_reward,
                 # Environment dynamics
                 "speed": speed,
                 "current_time": self.current_time,
@@ -594,14 +609,11 @@ class MariNav(gym.Env):
 
         info["step_action_continuous"] = action
         info["step_action_discrete"] = (neighbor_idx, speed_level)
-        info["reward_per_step"] = self.step_total_reward
-
-        # self.buffer_selected_info(info) # Uncomment to reactivate CSV logging
-        self.trajectory.append(self.current_h3)
+        info["reward_per_step"] = step_total_reward
 
         return (
             self._get_observation(speed, wind_direction),
-            self.step_total_reward,
+            step_total_reward,
             terminated,
             truncated,
             info,

@@ -44,6 +44,7 @@ GRAPH_PATH = "GULF_VISITS_CARGO_TANKER_AUGUST_2018.gexf"
 
 manager = Manager()
 global_visited_path_counts = manager.dict()  # shared across processes
+global_pair_selection_counts = manager.dict()
 
 
 def make_env():
@@ -57,6 +58,7 @@ def make_env():
             render_mode="human",
         )
         env.visited_path_counts = global_visited_path_counts
+        env.pair_selection_counts = global_pair_selection_counts
         return Monitor(env)
 
     return _init

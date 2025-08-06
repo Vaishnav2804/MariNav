@@ -26,6 +26,7 @@ from utils import *
 matplotlib.use("Agg")  # ✅ headless backend (important!)
 manager = Manager()
 global_visited_path_counts = manager.dict()  # shared across processes
+global_pair_selection_counts = manager.dict()
 
 # Training parameters
 DEFAULT_HISTORY_LEN = 8  # Default length of historical data to consider for training.
@@ -59,6 +60,7 @@ def make_env():
             render_mode="human",
         )
         base_env.visited_path_counts = global_visited_path_counts
+        base_env.pair_selection_counts = global_pair_selection_counts
         return Monitor(base_env)
 
     return _init
