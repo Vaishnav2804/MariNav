@@ -16,7 +16,7 @@ Below is an image that computes shortest path from a start and goal H3 cell in a
 
   ### Comparison:
 
-<img width="1303" height="418" alt="image" src="https://github.com/user-attachments/assets/4054eb15-dc41-41ac-80e0-0d022d4ea222" />
+<img width="1303" height="418" alt="image" src="https://github.com/user-attachments/assets/728816b0-21ec-499c-a341-8d37712ef1a9" />
 
 ---
 
