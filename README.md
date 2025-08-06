@@ -12,7 +12,12 @@
 Below is an image that computes shortest path from a start and goal H3 cell in a map using Dijistra's algorithm. We can use `MariNav` to develop a better optimal path using RL, given the weather, fuel and time constraints. 
 
   <img width="1316" height="430" alt="image" src="https://github.com/user-attachments/assets/277ccf0d-f9ad-4038-a790-3fe58ac41810" />
-  
+
+
+  ### Comparison:
+
+<img width="1303" height="418" alt="image" src="https://github.com/user-attachments/assets/4054eb15-dc41-41ac-80e0-0d022d4ea222" />
+
 ---
 
 ## Installation
