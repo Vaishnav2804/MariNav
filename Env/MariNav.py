@@ -239,7 +239,7 @@ class MariNav(gym.Env):
         self, *, seed: int | None = None, options: dict | None = None
     ) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed)
-
+        self.is_maskable = False
         # All possible (start, goal) pairs where start ≠ goal
         pairs = [(s, g) for s in self.h3_pool for g in self.h3_pool if s != g]
         # Trigger prioritization every 1M steps, for the next 10k steps
@@ -325,7 +325,11 @@ class MariNav(gym.Env):
         progress_reward = PROGRESS_REWARD_FACTOR * (distance_before - distance_after)
 
         # Frequency reward: based on historical visit frequency of the edge
-        edge_weight = self.graph[self.prev_h3][self.current_h3].get("weight", 1)
+        if self.prev_h3 and self.graph.has_edge(self.prev_h3, self.current_h3):
+            edge_weight = self.graph[self.prev_h3][self.current_h3].get("weight", 1)
+        else:
+            edge_weight = 0  # or some penalty
+
         frequency_reward = np.clip(np.log1p(edge_weight) / 5, 0, FREQUENCY_REWARD_CLIP)
 
         # Wind penalty: if wind speed exceeds threshold
