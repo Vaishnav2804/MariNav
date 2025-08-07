@@ -129,9 +129,9 @@ class MariNav(gym.Env):
         self.csv_header_written = False
         self.visited_path_counts = defaultdict(int)  # key: (start_h3, goal_h3)
         self.max_distance_reference = (
-            self._shortest_path_length(self.h3_pool[0], self.h3_pool[1])
+            self.shortest_path_length(self.h3_pool[0], self.h3_pool[1])
             if len(self.h3_pool) > 1
-            else self._shortest_path_length(self.h3_pool[0], self.h3_pool[2])
+            else self.shortest_path_length(self.h3_pool[0], self.h3_pool[2])
         )
         self.reset()
 
@@ -151,7 +151,7 @@ class MariNav(gym.Env):
         else:
             self.horizon = int(self.max_distance * 1.5)
 
-    def _shortest_path_length(self, src: str, dst: str) -> int:
+    def shortest_path_length(self, src: str, dst: str) -> int:
         key = (src, dst)
         if key not in self._distance_cache:
             if src not in self.graph or dst not in self.graph:
@@ -164,17 +164,7 @@ class MariNav(gym.Env):
                 raise RuntimeError(f"[Path Error] No path from {src} to {dst}")
         return self._distance_cache[key]
 
-    def action_masks(self) -> list[np.ndarray]:
-        """
-        Returns action masks for MultiDiscrete action space.
-
-        For MultiDiscrete spaces, this should return a list of boolean arrays,
-        one for each sub-action space.
-
-        Returns:
-            list[np.ndarray]: List containing [neighbor_mask, speed_mask]
-                            where each mask is a boolean array
-        """
+    def get_all_neighbors(self):
         all_neighbors = list(h3.grid_ring(self.current_h3))
         neighbors = self._get_valid_neighbors()
 
@@ -192,11 +182,29 @@ class MariNav(gym.Env):
 
                 if removable:
                     to_remove = random.choice(removable)
+
                 else:
                     # All are valid → remove any one randomly
                     to_remove = random.choice(all_neighbors)
 
                 all_neighbors.remove(to_remove)
+        self.all_neighbors = all_neighbors
+        self.neighbors = neighbors
+        return all_neighbors, neighbors
+
+    def action_masks(self) -> list[np.ndarray]:
+        """
+        Returns action masks for MultiDiscrete action space.
+
+        For MultiDiscrete spaces, this should return a list of boolean arrays,
+        one for each sub-action space.
+
+        Returns:
+            list[np.ndarray]: List containing [neighbor_mask, speed_mask]
+                            where each mask is a boolean array
+        """
+        self.is_maskable = True
+        all_neighbors, neighbors = self.get_all_neighbors()
 
         # Now all_neighbors is of length self.k, and contains as many valid neighbors as possible
         assert len(all_neighbors) == self.k
@@ -205,7 +213,6 @@ class MariNav(gym.Env):
         neighbor_mask = np.zeros(
             self.k, dtype=bool
         )  # self.k = len(all_neighbors) assumed
-        neighbors = self._get_valid_neighbors()
 
         if neighbors:
             valid_indices = [
@@ -278,7 +285,7 @@ class MariNav(gym.Env):
         self.current_time = datetime(2018, 8, random_day, random_hour, 0)
         self.episode_start_time = self.current_time
 
-        total_distance_m = self._shortest_path_length(self.start_h3, self.goal_h3)
+        total_distance_m = self.shortest_path_length(self.start_h3, self.goal_h3)
         self.target_eta = total_distance_m / (
             10 * KNOTS_TO_MPS
         )  # seconds, assuming 10 knots
@@ -414,12 +421,11 @@ class MariNav(gym.Env):
             speed_level
         ]
 
-        neighbors = self._get_valid_neighbors()
-
-        ring = h3.grid_ring(self.current_h3)
-
-        if self.prev_h3 in ring:
-            ring.remove(self.prev_h3)
+        if self.is_maskable:
+            ring = self.all_neighbors
+            neighbors = self.neighbors
+        else:
+            ring, neighbors = self.get_all_neighbors()
 
         if not neighbors:
             return (
@@ -442,7 +448,6 @@ class MariNav(gym.Env):
 
         # Step 2: Get candidate neighbor from ring
         candidate = ring[neighbor_idx]
-
         # Step 3: Make sure it's in valid neighbors
         if candidate not in neighbors:
             return (
@@ -460,11 +465,11 @@ class MariNav(gym.Env):
             override_reward = True
 
         try:
-            distance_before = self._shortest_path_length(self.current_h3, self.goal_h3)
+            distance_before = self.shortest_path_length(self.current_h3, self.goal_h3)
             self.prev_h3 = self.current_h3
             self.current_h3 = selected_neighbor
             self.step_count += 1
-            distance_after = self._shortest_path_length(selected_neighbor, self.goal_h3)
+            distance_after = self.shortest_path_length(selected_neighbor, self.goal_h3)
         except nx.NetworkXNoPath:
             # No valid path exists — strongly penalize the move
             # Invalid move — path is blocked (likely due to land)
