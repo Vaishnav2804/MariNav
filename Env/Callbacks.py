@@ -185,6 +185,7 @@ class InfoLoggingCallback(BaseCallback):
                 self._log_if_present(
                     episode_info, "base_step_penalty", "episode/base_step_penalty"
                 )
+                self._log_if_present(episode_info, "true_etr", "episode/true_etr")
 
         return True
 
