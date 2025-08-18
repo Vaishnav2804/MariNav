@@ -36,9 +36,6 @@ INVALID_MOVE_PENALTY = -1900
 PROGRESS_REWARD_FACTOR = 2
 FREQUENCY_REWARD_CLIP = 0.5
 WIND_PENALTY_VALUE = -1.0
-ALIGNMENT_PENALTY_FACTOR = (
-    -2.0 / math.pi
-)  # From -1.0 * (angle_diff / np.pi) but simplified
 FUEL_PENALTY_SCALE = -0.001
 ETA_PENALTY_SCALE = -0.001
 SPEED_BONUS_FACTOR = 0.3  # Not used for now.
@@ -272,7 +269,6 @@ class MariNav(gym.Env):
         self.step_count = 0
         self.episode_reward = 0.0
         self.episode_wind_penalty = 0.0
-        self.episode_alignment_penalty = 0.0
         self.episode_fuel_penalty = 0.0
         self.episode_eta_penalty = 0.0
         self.episode_base_step_penalty = 0.0
@@ -335,12 +331,6 @@ class MariNav(gym.Env):
         # Wind penalty: if wind speed exceeds threshold
         wind_penalty = WIND_PENALTY_VALUE if wind_speed > self.wind_threshold else 0.0
 
-        # Alignment penalty: for sailing against the wind
-        angle_diff = np.arccos(
-            np.clip(np.cos(move_direction - wind_direction), -1.0, 1.0)
-        )
-        alignment_penalty = ALIGNMENT_PENALTY_FACTOR * angle_diff
-
         # Speed bonus: positive reward for moving when progress is made
         # speed_bonus = SPEED_BONUS_FACTOR * speed if progress_reward > 0 else 0
 
@@ -361,7 +351,6 @@ class MariNav(gym.Env):
             progress_reward
             + frequency_reward
             + wind_penalty
-            + alignment_penalty
             + fuel_penalty
             + eta_penalty
             + base_step_penalty
@@ -372,7 +361,6 @@ class MariNav(gym.Env):
             "progress_reward": progress_reward,
             "frequency_reward": frequency_reward,
             "wind_penalty": wind_penalty,
-            "alignment_penalty": alignment_penalty,
             "fuel_penalty": fuel_penalty,
             "eta_penalty": eta_penalty,
             "base_step_penalty": base_step_penalty,
@@ -532,7 +520,6 @@ class MariNav(gym.Env):
         )
 
         step_wind_penalty = calculated_rewards["wind_penalty"]
-        step_alignment_penalty = calculated_rewards["alignment_penalty"]
         step_fuel_penalty = calculated_rewards["fuel_penalty"]
         step_eta_penalty = calculated_rewards["eta_penalty"]
         step_base_step_penalty = calculated_rewards["base_step_penalty"]
@@ -555,12 +542,14 @@ class MariNav(gym.Env):
 
         self.episode_reward += step_total_reward
         self.episode_wind_penalty += step_wind_penalty
-        self.episode_alignment_penalty += step_alignment_penalty
         self.episode_fuel_penalty += step_fuel_penalty
         self.episode_eta_penalty += step_eta_penalty
         self.episode_base_step_penalty += step_base_step_penalty
         self.episode_progress_reward += step_progress_reward
         self.episode_frequency_reward += step_frequency_reward
+        self.true_reward_with_no_progress_reward = (
+            self.episode_reward - self.episode_progress_reward
+        )
 
         if done:
             info.update(
@@ -571,7 +560,6 @@ class MariNav(gym.Env):
                         "progress_reward": self.episode_progress_reward,
                         "frequency_reward": self.episode_frequency_reward,
                         "wind_penalty": self.episode_wind_penalty,
-                        "alignment_penalty": self.episode_alignment_penalty,
                         "fuel_penalty": self.episode_fuel_penalty,
                         "eta_penalty": self.episode_eta_penalty,
                         "base_step_penalty": self.episode_base_step_penalty,
@@ -603,7 +591,6 @@ class MariNav(gym.Env):
                 "self_progress_reward": step_progress_reward,
                 "self_frequency_reward": step_frequency_reward,
                 "self_wind_penalty": step_wind_penalty,
-                "self_alignment_penalty": step_alignment_penalty,
                 "self_fuel_penalty": step_fuel_penalty,
                 "self_eta_penalty": step_eta_penalty,
                 "self_base_step_penalty": step_base_step_penalty,
@@ -619,6 +606,7 @@ class MariNav(gym.Env):
         info["step_action_continuous"] = action
         info["step_action_discrete"] = (neighbor_idx, speed_level)
         info["reward_per_step"] = step_total_reward
+        info["true_etr"] = self.true_reward_with_no_progress_reward
 
         return (
             self._get_observation(speed, wind_direction),
@@ -791,7 +779,6 @@ class MariNav(gym.Env):
             "progress": info["progress"],
             "override_reward": info["override_reward"],
             "wind_penalty": info["wind_penalty"],
-            "alignment_penalty": info["alignment_penalty"],
             "fuel_penalty": info["fuel_penalty"],
             "speed": info["speed"],
             "fuel_consumed": info["fuel_consumed"],
