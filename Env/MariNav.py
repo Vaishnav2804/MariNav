@@ -71,7 +71,7 @@ class MariNav(gym.Env):
         self,
         graph: nx.Graph,
         wind_map: dict,
-        h3_pool: list[str],
+        pairs: list[tuple[str, str]],
         h3_resolution: int = H3_RESOLUTION,
         wind_threshold: float = DEFAULT_WIND_THRESHOLD,
         render_mode: str = None,
@@ -94,13 +94,23 @@ class MariNav(gym.Env):
         super().__init__()
 
         self.graph = graph
-        self.valid_hex_ids = set(self.graph.nodes)
         self.wind_map = wind_map
         self.wind_threshold = wind_threshold
-        self.h3_pool = h3_pool
+        self.render_mode = render_mode
+
+        self.pairs = pairs
+
+        # Collect all H3 IDs seen across pairs so we can validate them
+        self.valid_hex_ids = set(self.graph.nodes)
+        self.h3_pool = list({h for pair in pairs for h in pair})
+
+        # Validate pool nodes exist in graph
+        for hexagon in self.h3_pool:
+            if hexagon not in self.graph:
+                raise ValueError(f"H3 cell {hexagon} not in graph.")
+
         self.pair_selection_counts = defaultdict(int)
         self.h3_resolution = h3_resolution
-        self.render_mode = render_mode
 
         # Validate Start/Goal Nodes Are Reachable
         for hexagon in self.h3_pool:
@@ -125,10 +135,9 @@ class MariNav(gym.Env):
         self.csv_file_path = CSV_FILE_PATH
         self.csv_header_written = False
         self.visited_path_counts = defaultdict(int)  # key: (start_h3, goal_h3)
-        self.max_distance_reference = (
-            self.shortest_path_length(self.h3_pool[0], self.h3_pool[1])
-            if len(self.h3_pool) > 1
-            else self.shortest_path_length(self.h3_pool[0], self.h3_pool[2])
+        self.max_distance_reference = self.shortest_path_length(
+            self.pairs[0][0],  # src (0th in tuple)
+            self.pairs[0][1],  # dst (1st in tuple)
         )
         self.reset()
 
@@ -169,25 +178,37 @@ class MariNav(gym.Env):
         if hasattr(self, "prev_h3") and self.prev_h3 in all_neighbors:
             all_neighbors.remove(self.prev_h3)
 
-        # Step 2: Now ensure len == self.k (e.g. 5) by removing ONE non-valid neighbor
+        # Step 2: Ensure len == self.k (e.g. 5) by removing ONE neighbor
         if len(all_neighbors) > self.k:
+            # Prefer removing the current cell if it sneaks in
             if self.current_h3 in all_neighbors:
                 all_neighbors.remove(self.current_h3)
-            # Find removable candidates: ones not in the valid neighbors
             else:
-                removable = [n for n in all_neighbors if n not in neighbors]
+                # Try to remove a non-valid neighbor first
+                removable_nonvalid = [n for n in all_neighbors if n not in neighbors]
 
-                if removable:
-                    to_remove = random.choice(removable)
-
+                if removable_nonvalid:
+                    # Deterministically remove the first non-valid (or pick by some stable key)
+                    # Using lexicographic order for stability:
+                    to_remove = sorted(removable_nonvalid)[0]
+                    all_neighbors.remove(to_remove)
                 else:
-                    # All are valid → remove any one randomly
-                    to_remove = random.choice(all_neighbors)
+                    # All are valid neighbors → remove the one with the least edge weight
+                    # Edge weights default to 0 if missing
+                    def edge_weight(nbr: str) -> float:
+                        if self.graph.has_edge(self.current_h3, nbr):
+                            return self.graph[self.current_h3][nbr].get("weight", 0.0)
+                        # If there's no explicit edge (shouldn't happen for valid neighbors), use 0
+                        return 0.0
 
-                all_neighbors.remove(to_remove)
+                    # Choose neighbor with minimum weight; break ties deterministically by H3 index
+                    to_remove = min(neighbors, key=lambda n: (edge_weight(n), n))
+                    all_neighbors.remove(to_remove)
+
+        # Save for masks
         self.all_neighbors = all_neighbors
-        self.neighbors = neighbors
-        return all_neighbors, neighbors
+        self.neighbors = [n for n in neighbors if n in all_neighbors]
+        return all_neighbors, self.neighbors
 
     def action_masks(self) -> list[np.ndarray]:
         """
@@ -238,7 +259,7 @@ class MariNav(gym.Env):
         super().reset(seed=seed)
         self.is_maskable = False
         # All possible (start, goal) pairs where start ≠ goal
-        pairs = [(s, g) for s in self.h3_pool for g in self.h3_pool if s != g]
+        pairs = self.pairs
         # Trigger prioritization every 1M steps, for the next 10k steps
         if self.total_steps % 1_000_000 == 0:
             self.prioritize_until = self.total_steps + 100_000
@@ -278,7 +299,7 @@ class MariNav(gym.Env):
 
         random_day = np.random.randint(1, 30)
         random_hour = np.random.randint(0, 24)
-        self.current_time = datetime(2018, 8, random_day, random_hour, 0)
+        self.current_time = datetime(2022, 8, random_day, random_hour, 0)
         self.episode_start_time = self.current_time
 
         total_distance_m = self.shortest_path_length(self.start_h3, self.goal_h3)
