@@ -97,6 +97,7 @@ class MariNav(gym.Env):
         self.wind_map = wind_map
         self.wind_threshold = wind_threshold
         self.render_mode = render_mode
+        self.prioritize_until = 0
 
         self.pairs = pairs
 
@@ -261,8 +262,9 @@ class MariNav(gym.Env):
         # All possible (start, goal) pairs where start ≠ goal
         pairs = self.pairs
         # Trigger prioritization every 1M steps, for the next 10k steps
-        if self.total_steps % 1_000_000 == 0:
-            self.prioritize_until = self.total_steps + 100_000
+        if self.total_steps > (62500):
+            self.prioritize_until = 6250
+            self.total_steps = 0
 
         if self.total_steps < self.prioritize_until:
             # Prioritized sampling
@@ -424,6 +426,7 @@ class MariNav(gym.Env):
                 - truncated (bool): True if the episode has ended (horizon reached).
                 - info (dict): A dictionary containing additional information about the step.
         """
+        self.total_steps += 1
         info: dict = {}
         info["revisiting_loop"] = 0
         override_reward = False
@@ -498,16 +501,6 @@ class MariNav(gym.Env):
                     "goal_h3": self.goal_h3,
                     "step_count": self.step_count,
                 },
-            )
-
-        if self.current_h3 in self.trajectory:
-            info["revisiting_loop"] += 1
-            return (
-                self._get_observation(),
-                -1900,
-                True,
-                False,
-                info,
             )
 
         # self.buffer_selected_info(info) # Uncomment to reactivate CSV logging
@@ -850,18 +843,28 @@ class MariNavWithHistory(gym.Wrapper):
         self.observation_space = spaces.Box(
             low=np.repeat(obs_space.low, history_len),
             high=np.repeat(obs_space.high, history_len),
-            shape=(obs_space.shape[0] * history_len,),  # Flattened shape
+            shape=(
+                obs_space[:-4].shape[0] * history_len + 4,
+            ),  # Flattened shape -- remove last 4 elements (start_lat,start_lon,goal_lat,goal_lon)
             dtype=np.float32,
         )
 
     def reset(self, **kwargs) -> tuple[np.ndarray, dict]:
         """
         Resets the environment and initializes the observation buffer with
-        the first observation repeated `history_len` times.
+        the first observation (excluding coords) repeated `history_len` times.
         """
         obs, info = self.env.reset(**kwargs)
-        self.obs_buffer = [obs] * self.history_len
-        return np.concatenate(self.obs_buffer, axis=0), info
+
+        # Store only the truncated obs (exclude last 4 coords)
+        self.obs_buffer = [obs[:-4]] * self.history_len
+
+        # Concatenate history with the last 4 fixed coords
+        stacked_obs = np.concatenate(
+            [np.concatenate(self.obs_buffer, axis=0), obs[-4:]], axis=0
+        )
+
+        return stacked_obs, info
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
         """
@@ -869,9 +872,11 @@ class MariNavWithHistory(gym.Wrapper):
         and returns the concatenated history as the observation.
         """
         obs, reward, terminated, truncated, info = self.env.step(action)
-        self.obs_buffer.append(obs)
+        self.obs_buffer.append(obs[:-4])
         self.obs_buffer = self.obs_buffer[
             -self.history_len :
         ]  # Keep only the latest `history_len` observations
-        stacked_obs = np.concatenate(self.obs_buffer, axis=0)
+        stacked_obs = np.concatenate(
+            [np.concatenate(self.obs_buffer, axis=0), obs[-4:]], axis=0
+        )  # Append the last 4 elements (start_lat,start_lon,goal_lat,goal_lon)
         return stacked_obs, reward, terminated, truncated, info
