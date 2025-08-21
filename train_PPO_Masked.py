@@ -23,6 +23,13 @@ from stable_baselines3.common.utils import get_linear_fn, get_schedule_fn
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from utils import *
 
+# Limit thread usage to prevent CPU overload
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 matplotlib.use("Agg")  # ✅ headless backend (important!)
 manager = Manager()
 global_visited_path_counts = manager.dict()  # shared across processes
@@ -36,23 +43,23 @@ DEFAULT_MIN_DELTA = (
     2.0  # Minimum change in the monitored quantity to qualify as an improvement.
 )
 
-H3_POOL = [
-    "862b160d7ffffff",
-    "860e4da17ffffff",
-    "861b9101fffffff",
-    "862b256dfffffff",
-    "862b33237ffffff",
-]  # A list of H3 geospatial indexes, likely representing specific geographic regions or cells used in the model.
-WIND_MAP_PATH = (
-    "august_2018_60min_windmap_v2.csv"  # File path to a CSV containing wind map data.
-)
-GRAPH_PATH = "GULF_VISITS_CARGO_TANKER_AUGUST_2018.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
+PAIR_LIST = [
+    ("862b12ccfffffff", "861b91adfffffff"),
+    ("861b91a0fffffff", "862b12ccfffffff"),
+    ("861ab28b7ffffff", "862b12ccfffffff"),
+    ("860e4daafffffff", "861ab685fffffff"),
+    ("862b12ccfffffff", "862b2d137ffffff"),
+    ("861ab6847ffffff", "860e4daafffffff"),
+]
+
+WIND_MAP_PATH = "../wind_and_graph/2023-august-wind-data.csv"  # File path to a CSV containing wind map data.
+GRAPH_PATH = "../wind_and_graph/GULF_VISITS_cargo_tanker_2023_merged.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
 
 
 def make_env():
     def _init():
         base_env = MariNav(
-            h3_pool=H3_POOL,
+            pairs=PAIR_LIST,
             graph=G_visits,
             wind_map=full_wind_map,
             h3_resolution=H3_RESOLUTION,
@@ -88,7 +95,8 @@ if __name__ == "__main__":
     # Define a log directory for TensorBoard
     learning_rate_schedule = get_linear_fn(start=7e-4, end=1e-5, end_fraction=1.0)
     # 3. Instantiate PPO model
-
+    seed = 4  # For reproducibility
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model = MaskablePPO(
         policy="MlpPolicy",
         env=vec_env,
@@ -99,8 +107,9 @@ if __name__ == "__main__":
         n_steps=1024,
         batch_size=64,
         n_epochs=15,
-        tensorboard_log="./logs/",
+        tensorboard_log=f"./tensorboard_logs/logs_PPO_Masked{seed}_{timestamp}/",
         device="cpu",
+        seed=seed,  # For reproducibility
     )
 
     # 4. Print the model architecture for inspection
@@ -110,11 +119,9 @@ if __name__ == "__main__":
         print(f"{name:<40} {list(param.shape)}")
     print("----------------------------\n")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
     eval_callback = EvalCallback(
         eval_env=vec_env,  # Wrap with Monitor
-        best_model_save_path=f"./ppo_gulf_tanker_PPO_MASKED_120000000_{timestamp}",
+        best_model_save_path=f"./ppo_gulf_tanker_PPO_MASKED_6_500_000_{timestamp}",
         log_path="./eval_logs",  # important!
         eval_freq=8000,
         deterministic=False,
@@ -137,6 +144,6 @@ if __name__ == "__main__":
     )
 
     # Train the model
-    print(f"Starting training for {120000000} timesteps...")
-    model.learn(total_timesteps=120_000_000, callback=callback)
+    print(f"Starting training for {6_500_000} timesteps...")
+    model.learn(total_timesteps=6_500_000, callback=callback)
     print("Training finished.")
