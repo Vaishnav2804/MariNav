@@ -82,6 +82,12 @@ model.learn(total_timesteps=240_000_000, callback=RLeXploreWithOnPolicyRL(irs))
 
 PPO with action masks comparatively performes better than the standard PPO with MLP policy - (For the given environment) -- Play around to figure out more!
 
+
+## Example 2 Experiment Results 
+
+<img width="767" height="461" alt="image" src="https://github.com/user-attachments/assets/8d09d6c6-79d8-4124-8b5c-525beb6ebdc3" />
+
+- PPO maskable with termination on entering land performs better than no termination logics for those situations.
 ---
 
 ## What It Does
