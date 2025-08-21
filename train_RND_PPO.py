@@ -96,12 +96,13 @@ CALLBACK_CHECK_INTERVAL = 5000
 DEFAULT_PATIENCE = 1000000
 DEFAULT_MIN_DELTA = 2.0
 
-H3_POOL = [
-    "862b160d7ffffff",
-    "860e4da17ffffff",
-    "861b9101fffffff",
-    "862b256dfffffff",
-    "862b33237ffffff",
+PAIR_LIST = [
+    ("862b12ccfffffff", "861b91adfffffff"),
+    ("861b91a0fffffff", "862b12ccfffffff"),
+    ("861ab28b7ffffff", "862b12ccfffffff"),
+    ("860e4daafffffff", "861ab685fffffff"),
+    ("862b12ccfffffff", "862b2d137ffffff"),
+    ("861ab6847ffffff", "860e4daafffffff"),
 ]
 
 WIND_MAP_PATH = "august_2018_60min_windmap_v2.csv"
@@ -115,12 +116,11 @@ global_pair_selection_counts = manager.dict()
 def make_env():
     def _init():
         env = MariNav(
-            h3_pool=H3_POOL,
+            pairs=PAIR_LIST,
             graph=G_visits,
             wind_map=full_wind_map,
             h3_resolution=H3_RESOLUTION,
             wind_threshold=22,
-            render_mode="human",
         )
         env.visited_path_counts = global_visited_path_counts
         env.pair_selection_counts = global_pair_selection_counts
