@@ -586,6 +586,7 @@ class MariNav(gym.Env):
                         f"{s}->{g}": count
                         for (s, g), count in self.pair_selection_counts.items()
                     },
+                    "true_etr": self.true_reward_with_no_progress_reward,
                 }
             )
 
@@ -620,7 +621,6 @@ class MariNav(gym.Env):
         info["step_action_continuous"] = action
         info["step_action_discrete"] = (neighbor_idx, speed_level)
         info["reward_per_step"] = step_total_reward
-        info["true_etr"] = self.true_reward_with_no_progress_reward
 
         return (
             self._get_observation(speed, wind_direction),
