@@ -838,29 +838,50 @@ class MariNavWithHistory(gym.Wrapper):
         self.obs_buffer: list[np.ndarray] = []
 
         obs_space = env.observation_space
-        original_obs_size = obs_space.shape[0]  # This is an int (e.g., 8)
-        new_shape = original_obs_size * history_len  # This is an int (e.g., 64)
 
-        # Explicitly ensure shape is a tuple of ints (avoids nesting)
-        if not isinstance(new_shape, int):
-            raise ValueError("new_shape must be an integer.")
+        # Calculate history parts
+        history_low = np.tile(obs_space.low[:-4], history_len)
+        history_high = np.tile(obs_space.high[:-4], history_len)
+
+        # Full low and high
+        full_low = np.concatenate([history_low, obs_space.low[-4:]])
+        full_high = np.concatenate([history_high, obs_space.high[-4:]])
 
         self.observation_space = spaces.Box(
-            low=np.tile(obs_space.low, history_len),
-            high=np.tile(obs_space.high, history_len),
-            shape=(new_shape,),  # Tuple with single int element
+            low=full_low,
+            high=full_high,
+            shape=full_low.shape,
             dtype=np.float32,
         )
 
     def reset(self, **kwargs) -> tuple[np.ndarray, dict]:
+        """
+        Resets the environment and initializes the observation buffer with
+        the first observation (excluding coords) repeated `history_len` times.
+        """
         obs, info = self.env.reset(**kwargs)
-        self.obs_buffer = [obs] * self.history_len
-        stacked_obs = np.concatenate(self.obs_buffer, axis=0)
+
+        # Store only the truncated obs (exclude last 4 coords)
+        self.obs_buffer = [obs[:-4]] * self.history_len
+
+        # Concatenate history with the last 4 fixed coords
+        stacked_obs = np.concatenate(
+            [np.concatenate(self.obs_buffer, axis=0), obs[-4:]], axis=0
+        )
+
         return stacked_obs, info
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
+        """
+        Takes a step in the environment, appends the new observation to the buffer,
+        and returns the concatenated history as the observation.
+        """
         obs, reward, terminated, truncated, info = self.env.step(action)
-        self.obs_buffer.append(obs)
-        self.obs_buffer = self.obs_buffer[-self.history_len :]
-        stacked_obs = np.concatenate(self.obs_buffer, axis=0)
+        self.obs_buffer.append(obs[:-4])
+        self.obs_buffer = self.obs_buffer[
+            -self.history_len :
+        ]  # Keep only the latest `history_len` observations
+        stacked_obs = np.concatenate(
+            [np.concatenate(self.obs_buffer, axis=0), obs[-4:]], axis=0
+        )  # Append the last 4 elements (start_lat,start_lon,goal_lat,goal_lon)
         return stacked_obs, reward, terminated, truncated, info
