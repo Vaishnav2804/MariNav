@@ -52,8 +52,8 @@ PAIR_LIST = [
     ("861ab6847ffffff", "860e4daafffffff"),
 ]
 
-WIND_MAP_PATH = "../wind_and_graph/2023-august-wind-data.csv"  # File path to a CSV containing wind map data.
-GRAPH_PATH = "../wind_and_graph/GULF_VISITS_cargo_tanker_2023_merged.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
+WIND_MAP_PATH = "../wind_and_graph_2024/2024_august_wind_data.csv"  # File path to a CSV containing wind map data.
+GRAPH_PATH = "../wind_and_graph_2024/GULF_VISITS_cargo_tanker_2024_merged.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
 
 
 def make_env():
@@ -106,7 +106,7 @@ if __name__ == "__main__":
         learning_rate=learning_rate_schedule,
         n_steps=1024,
         batch_size=64,
-        n_epochs=15,
+        n_epochs=10,
         tensorboard_log=f"./tensorboard_logs/logs_PPO_Masked{seed}_{timestamp}/",
         device="cpu",
         seed=seed,  # For reproducibility
@@ -121,7 +121,7 @@ if __name__ == "__main__":
 
     eval_callback = EvalCallback(
         eval_env=vec_env,  # Wrap with Monitor
-        best_model_save_path=f"./ppo_gulf_tanker_PPO_MASKED_6_500_000_{timestamp}",
+        best_model_save_path=f"./ppo_gulf_tanker_PPO_MASKED_10_500_000_{timestamp}",
         log_path="./eval_logs",  # important!
         eval_freq=8000,
         deterministic=False,
@@ -144,6 +144,6 @@ if __name__ == "__main__":
     )
 
     # Train the model
-    print(f"Starting training for {6_500_000} timesteps...")
-    model.learn(total_timesteps=6_500_000, callback=callback)
+    print(f"Starting training for {10_500_000} timesteps...")
+    model.learn(total_timesteps=10_500_000, callback=callback)
     print("Training finished.")
