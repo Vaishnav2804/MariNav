@@ -137,9 +137,10 @@ if __name__ == "__main__":
 
     step_logger = StepRewardLoggerCallback()
     info_logging_callback = InfoLoggingCallback()
+    ep_stat_callback = EpisodeStatsCallback()
 
     callback = CallbackList(
-        [eval_callback, early_stop, step_logger, info_logging_callback]
+        [eval_callback, early_stop, step_logger, info_logging_callback, ep_stat_callback]
     )
 
     # Train the model

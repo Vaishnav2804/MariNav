@@ -192,3 +192,45 @@ class InfoLoggingCallback(BaseCallback):
     def _log_if_present(self, info_dict, key, tb_key):
         if key in info_dict:
             self.logger.record(tb_key, info_dict[key])
+
+
+
+class EpisodeStatsCallback(BaseCallback):
+    """
+    Reproduce SB3's ep_rew_mean logic, but using info["epi"].
+    Aggregates over episodes finished during *this rollout* only.
+    """
+
+    def __init__(self, prefix="rollout", verbose=0):
+        super().__init__(verbose)
+        self.prefix = prefix
+        self._epis_this_rollout = []
+
+    def _on_rollout_start(self) -> None:
+        # Reset at start of rollout
+        self._epis_this_rollout = []
+
+    def _on_step(self) -> bool:
+        dones = self.locals["dones"]
+        infos = self.locals["infos"]
+        for done, info in zip(dones, infos):
+            if done and "epi" in info and isinstance(info["epi"], dict):
+                # store one dict per finished episode
+                self._epis_this_rollout.append(info["epi"].copy())
+        return True
+
+    def _on_rollout_end(self) -> None:
+        print(self._epis_this_rollout)
+        if not self._epis_this_rollout:
+            return
+
+        # Aggregate like SB3: mean over just-this-rollout episodes
+        keys = set().union(*[epi.keys() for epi in self._epis_this_rollout])
+        for key in sorted(keys):
+            values = [epi[key] for epi in self._epis_this_rollout if key in epi]
+            # Only log numeric values
+            values = [float(v) for v in values if isinstance(v, (int, float))]
+            if values:
+                mean_val = sum(values) / len(values)
+                self.logger.record(f"{self.prefix}/{key}_mean", mean_val)
+

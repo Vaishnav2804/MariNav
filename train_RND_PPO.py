@@ -1,4 +1,5 @@
 # Standard library imports
+import argparse
 import csv
 import math  # Import math for pi
 import multiprocessing as mp
@@ -105,8 +106,8 @@ PAIR_LIST = [
     ("861ab6847ffffff", "860e4daafffffff"),
 ]
 
-WIND_MAP_PATH = "../wind_and_graph_2024/2024_august_wind_data.csv"  # File path to a CSV containing wind map data.
-GRAPH_PATH = "../wind_and_graph_2024/GULF_VISITS_cargo_tanker_2024_merged.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
+WIND_MAP_PATH = "wind_and_graph_2024/2024_august_wind_data.csv"  # File path to a CSV containing wind map data.
+GRAPH_PATH = "wind_and_graph_2024/GULF_VISITS_cargo_tanker_2024_merged.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
 
 manager = Manager()
 global_visited_path_counts = manager.dict()  # shared across processes
@@ -131,6 +132,13 @@ def make_env():
 
 if __name__ == "__main__":
     mp.set_start_method("fork", force=True)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--seed", type=int, default=31, help="Random seed for reproducibility"
+    )
+    args = parser.parse_args()
+    seed = args.seed
 
     print(f"Loading wind map from {WIND_MAP_PATH}...")
     full_wind_map = load_full_wind_map(WIND_MAP_PATH)
@@ -158,7 +166,6 @@ if __name__ == "__main__":
     irs = RND(vec_env, device="cpu")
     # ===================== build the reward ===================== #
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    seed = 4
     model = PPO(
         policy="MlpPolicy",
         env=vec_env,
@@ -200,6 +207,7 @@ if __name__ == "__main__":
 
     step_logger = StepRewardLoggerCallback()
     info_logging_callback = InfoLoggingCallback()
+    ep_stat_callback = EpisodeStatsCallback()
 
     callback = CallbackList(
         [
@@ -207,6 +215,7 @@ if __name__ == "__main__":
             early_stop,
             step_logger,
             info_logging_callback,
+            ep_stat_callback,
             RLeXploreWithOnPolicyRL(irs),
         ]
     )
