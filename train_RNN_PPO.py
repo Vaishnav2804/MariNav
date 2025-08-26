@@ -1,4 +1,5 @@
 # Standard library imports
+import argparse
 import csv
 import math  # Import math for pi
 import multiprocessing as mp
@@ -15,12 +16,15 @@ import networkx as nx
 import numpy as np
 from Env.Callbacks import *
 from Env.MariNav import *
+from sb3_contrib import MaskablePPO
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.utils import get_linear_fn, get_schedule_fn
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from utils import *
+from sb3_contrib.ppo_recurrent import RecurrentPPO
+from sb3_contrib.common.wrappers import ActionMasker
 
 # Limit thread usage to prevent CPU overload
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -51,8 +55,8 @@ PAIR_LIST = [
     ("861ab6847ffffff", "860e4daafffffff"),
 ]
 
-WIND_MAP_PATH = "../wind_and_graph_2024/2024_august_wind_data.csv"  # File path to a CSV containing wind map data.
-GRAPH_PATH = "../wind_and_graph_2024/GULF_VISITS_cargo_tanker_2024_merged.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
+WIND_MAP_PATH = "wind_and_graph_2024/2024_august_wind_data.csv"  # File path to a CSV containing wind map data.
+GRAPH_PATH = "wind_and_graph_2024/GULF_VISITS_cargo_tanker_2024_merged.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
 
 
 def make_env():
@@ -67,12 +71,26 @@ def make_env():
         )
         base_env.visited_path_counts = global_visited_path_counts
         base_env.pair_selection_counts = global_pair_selection_counts
-        return Monitor(base_env)
+        # Wrap with Monitor for logging
+        env = Monitor(base_env)
+        # Wrap with ActionMasker so RecurrentPPO can use env.action_masks()
+        env = ActionMasker(env, action_mask_fn=lambda e: e.action_masks())
+        return env
 
     return _init
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--seed", type=int, default=31, help="Random seed for reproducibility"
+    )
+    parser.add_argument(
+        "--no-positive-rews", action="store_true", help="Disable positive rewards"
+    )
+    args = parser.parse_args()
+    seed = args.seed
+    no_positive_rews = args.no_positive_rews
     mp.set_start_method("fork", force=True)
 
     print(f"Loading wind map from {WIND_MAP_PATH}...")
@@ -88,16 +106,19 @@ if __name__ == "__main__":
 
     # 2. Define policy architecture and features extractor
     policy_kwargs = dict(
-        net_arch=dict(pi=[64, 64], vf=[64, 64])  # ✅ Explicit networks
+        net_arch=dict(pi=[64, 64], vf=[64, 64]),
+        lstm_hidden_size=128,
+        n_lstm_layers=1,
+        # shared_lstm=True (default)
     )
 
+    method_prefix = "PPO_RNN_Masked"
     # Define a log directory for TensorBoard
     learning_rate_schedule = get_linear_fn(start=7e-4, end=1e-5, end_fraction=1.0)
     # 3. Instantiate PPO model
-    seed = 4  # For reproducibility
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    model = PPO(
-        policy="MlpPolicy",
+    model = RecurrentPPO(
+        policy="MlpLstmPolicy",
         env=vec_env,
         policy_kwargs=policy_kwargs,
         verbose=1,
@@ -106,7 +127,7 @@ if __name__ == "__main__":
         n_steps=1024,
         batch_size=64,
         n_epochs=10,
-        tensorboard_log=f"./tensorboard_logs/logs_PPO_Masked{seed}_{timestamp}/",
+        tensorboard_log=f"./tensorboard_logs/{method_prefix}_{seed}_{timestamp}/",
         device="cpu",
         seed=seed,  # For reproducibility
     )
@@ -120,7 +141,7 @@ if __name__ == "__main__":
 
     eval_callback = EvalCallback(
         eval_env=vec_env,  # Wrap with Monitor
-        best_model_save_path=f"./ppo_gulf_tanker_PPO_MASKED_10_500_000_{timestamp}",
+        best_model_save_path=f"./models/{method_prefix}_{seed}_{timestamp}",
         log_path="./eval_logs",  # important!
         eval_freq=8000,
         deterministic=False,
@@ -147,3 +168,4 @@ if __name__ == "__main__":
     print(f"Starting training for {10_500_000} timesteps...")
     model.learn(total_timesteps=10_500_000, callback=callback)
     print("Training finished.")
+ 

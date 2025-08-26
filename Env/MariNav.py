@@ -74,6 +74,7 @@ class MariNav(gym.Env):
         pairs: list[tuple[str, str]],
         h3_resolution: int = H3_RESOLUTION,
         wind_threshold: float = DEFAULT_WIND_THRESHOLD,
+        no_positive_rews: bool = False,
         render_mode: str = None,
     ):
         """
@@ -98,6 +99,7 @@ class MariNav(gym.Env):
         self.wind_threshold = wind_threshold
         self.render_mode = render_mode
         self.prioritize_until = 0
+        self.no_positive_rews = no_positive_rews
 
         self.pairs = pairs
 
@@ -291,6 +293,7 @@ class MariNav(gym.Env):
         self.prev_h3 = None
         self.step_count = 0
         self.episode_reward = 0.0
+        self.episode_neg_reward = 0.0
         self.episode_wind_penalty = 0.0
         self.episode_fuel_penalty = 0.0
         self.episode_eta_penalty = 0.0
@@ -332,14 +335,10 @@ class MariNav(gym.Env):
         wind_speed: float,
         move_direction: float,
         wind_direction: float,
-        override_reward: bool,
     ) -> float:
         """
         Calculates the various reward components for the current step.
         """
-        if override_reward:
-            return INVALID_MOVE_PENALTY
-
         # Progress reward: based on reduction in distance to goal
         progress_reward = PROGRESS_REWARD_FACTOR * (distance_before - distance_after)
 
@@ -408,6 +407,34 @@ class MariNav(gym.Env):
         wind_direction = np.arctan2(wind_v, wind_u)  # Radians
 
         return wind_u, wind_v, wind_speed, wind_direction
+    
+    def _finalize_epi(self, info: dict) -> dict:
+        """
+        Attach episode statistics to info when an episode ends.
+        Mirrors how Monitor provides info["episode"].
+        """
+        info.update(
+            {
+                "epi": {
+                    "r": (
+                        self.episode_neg_reward
+                        if self.no_positive_rews
+                        else self.episode_reward
+                    ),
+                    "l": self.step_count,
+                    "progress_reward": self.episode_progress_reward,
+                    "frequency_reward": self.episode_frequency_reward,
+                    "wind_penalty": self.episode_wind_penalty,
+                    "fuel_penalty": self.episode_fuel_penalty,
+                    "eta_penalty": self.episode_eta_penalty,
+                    "base_step_penalty": self.episode_base_step_penalty,
+                    "episode_reward": self.episode_reward,
+                    "episode_neg_reward": self.episode_neg_reward,
+                }
+            }
+        )
+        return info
+
 
     def step(
         self, action: tuple[int, int]
@@ -427,9 +454,9 @@ class MariNav(gym.Env):
                 - info (dict): A dictionary containing additional information about the step.
         """
         self.total_steps += 1
+        self.step_count += 1
         info: dict = {}
         info["revisiting_loop"] = 0
-        override_reward = False
 
         neighbor_idx, speed_level = action
         # neighbor_idx, speed_level = action
@@ -443,48 +470,44 @@ class MariNav(gym.Env):
         else:
             ring, neighbors = self.get_all_neighbors()
 
-        if not neighbors:
-            return (
-                self._get_observation(),
-                -1900,
-                True,
-                False,
-                {"reason": "no valid neighbors"},
-            )
-
         # Step 1: Check ring index range
         if neighbor_idx >= len(ring):
+            raise Exception("neighbor_idx out of ring bounds")
+
+        if not neighbors:
+            self.episode_reward += INVALID_MOVE_PENALTY
+            info = {"reason": "no valid neighbors"}
+            info = self._finalize_epi(info)
             return (
                 self._get_observation(),
-                -1900,
+                INVALID_MOVE_PENALTY,
                 True,
                 False,
-                {"reason": "neighbor_idx out of ring bounds"},
+                info,
             )
 
         # Step 2: Get candidate neighbor from ring
         candidate = ring[neighbor_idx]
         # Step 3: Make sure it's in valid neighbors
         if candidate not in neighbors:
+            self.episode_reward += INVALID_MOVE_PENALTY
+            info = {"reason": "selected ring neighbor not in valid neighbors"}
+            info = self._finalize_epi(info)
             return (
                 self._get_observation(),
-                -1900,
+                INVALID_MOVE_PENALTY,
                 True,
                 False,
-                {"reason": "selected ring neighbor not in valid neighbors"},
+                info,
             )
 
         # Step 4: It's valid
         selected_neighbor = candidate
 
-        if selected_neighbor == self.current_h3:
-            override_reward = True
-
         try:
             distance_before = self.shortest_path_length(self.current_h3, self.goal_h3)
             self.prev_h3 = self.current_h3
             self.current_h3 = selected_neighbor
-            self.step_count += 1
             distance_after = self.shortest_path_length(selected_neighbor, self.goal_h3)
         except nx.NetworkXNoPath:
             # No valid path exists — strongly penalize the move
@@ -530,7 +553,6 @@ class MariNav(gym.Env):
             wind_speed,
             move_direction,
             wind_direction,
-            override_reward,
         )
 
         step_wind_penalty = calculated_rewards["wind_penalty"]
@@ -540,19 +562,18 @@ class MariNav(gym.Env):
         step_progress_reward = calculated_rewards["progress_reward"]
         step_frequency_reward = calculated_rewards["frequency_reward"]
         step_total_reward = calculated_rewards["total_reward"]
+        step_total_neg_reward = (
+            step_total_reward - step_progress_reward - step_frequency_reward
+        )
 
         if terminated:
             key = (self.start_h3, self.goal_h3)
             self.visited_path_counts[key] = self.visited_path_counts.get(key, 0) + 1
-            print(
-                f"Hurray! Goal reached! Start_H3: {self.start_h3}, Goal_H3: {self.goal_h3}, "
-                f"Step Count: {self.step_count}, Episode Reward: {self.episode_reward}"
-            )
             step_total_reward += GOAL_REWARD
 
-        step_total_reward = (
-            step_total_reward / self.max_distance
-        ) * self.max_distance_reference
+        distance_scaler = self.max_distance_reference / self.max_distance
+        step_total_reward = step_total_reward * distance_scaler
+        step_total_neg_reward = step_total_neg_reward * distance_scaler
 
         self.episode_reward += step_total_reward
         self.episode_wind_penalty += step_wind_penalty
@@ -561,15 +582,18 @@ class MariNav(gym.Env):
         self.episode_base_step_penalty += step_base_step_penalty
         self.episode_progress_reward += step_progress_reward
         self.episode_frequency_reward += step_frequency_reward
-        self.true_reward_with_no_progress_reward = (
-            self.episode_reward - self.episode_progress_reward
-        )
+        self.episode_neg_reward += step_total_neg_reward
 
         if done:
+            print("Done")
             info.update(
                 {
                     "epi": {
-                        "r": self.episode_reward,
+                        "r": (
+                            self.episode_neg_reward
+                            if self.no_positive_rews
+                            else self.episode_reward
+                        ),
                         "l": self.step_count,
                         "progress_reward": self.episode_progress_reward,
                         "frequency_reward": self.episode_frequency_reward,
@@ -577,6 +601,8 @@ class MariNav(gym.Env):
                         "fuel_penalty": self.episode_fuel_penalty,
                         "eta_penalty": self.episode_eta_penalty,
                         "base_step_penalty": self.episode_base_step_penalty,
+                        "episode_reward": self.episode_reward,
+                        "episode_neg_reward": self.episode_neg_reward,
                     },
                     "visited_path_counts": {
                         f"{s}->{g}": count
@@ -586,7 +612,6 @@ class MariNav(gym.Env):
                         f"{s}->{g}": count
                         for (s, g), count in self.pair_selection_counts.items()
                     },
-                    "true_etr": self.true_reward_with_no_progress_reward,
                 }
             )
 
@@ -601,7 +626,6 @@ class MariNav(gym.Env):
                 "current_h3": self.current_h3,
                 "prev_h3": self.prev_h3,
                 "distance_to_goal": distance_after,
-                "override_reward": override_reward,
                 # Step-level reward components with self_ prefix
                 "self_progress_reward": step_progress_reward,
                 "self_frequency_reward": step_frequency_reward,
@@ -624,7 +648,7 @@ class MariNav(gym.Env):
 
         return (
             self._get_observation(speed, wind_direction),
-            step_total_reward,
+            step_total_neg_reward if self.no_positive_rews else step_total_reward,
             terminated,
             truncated,
             info,

@@ -1,9 +1,8 @@
 # Standard library imports
+import argparse
 import csv
 import math  # Import math for pi
-import multiprocessing as mp
 import os
-from collections import defaultdict
 from datetime import datetime, timedelta
 from multiprocessing import Manager
 
@@ -16,8 +15,7 @@ import numpy as np
 from Env.Callbacks import *
 from Env.MariNav import *
 from sb3_contrib import MaskablePPO
-from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import BaseCallback, CallbackList, EvalCallback
+from stable_baselines3.common.callbacks import CallbackList, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.utils import get_linear_fn, get_schedule_fn
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
@@ -38,7 +36,7 @@ global_pair_selection_counts = manager.dict()
 # Training parameters
 DEFAULT_HISTORY_LEN = 8  # Default length of historical data to consider for training.
 CALLBACK_CHECK_INTERVAL = 5000  # How often (e.g., in steps or iterations) to check for callback conditions during training.
-DEFAULT_PATIENCE = 100000  # Number of iterations with no improvement after which training will stop (for early stopping).
+DEFAULT_PATIENCE = 1000000  # Number of iterations with no improvement after which training will stop (for early stopping).
 DEFAULT_MIN_DELTA = (
     2.0  # Minimum change in the monitored quantity to qualify as an improvement.
 )
@@ -52,11 +50,11 @@ PAIR_LIST = [
     ("861ab6847ffffff", "860e4daafffffff"),
 ]
 
-WIND_MAP_PATH = "../wind_and_graph_2024/2024_august_wind_data.csv"  # File path to a CSV containing wind map data.
-GRAPH_PATH = "../wind_and_graph_2024/GULF_VISITS_cargo_tanker_2024_merged.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
+WIND_MAP_PATH = "wind_and_graph_2024/2024_august_wind_data.csv"  # File path to a CSV containing wind map data.
+GRAPH_PATH = "wind_and_graph_2024/GULF_VISITS_cargo_tanker_2024_merged.gexf"  # File path to a GEXF file, likely representing a graph or network of cargo tanker visits in the Gulf.
 
 
-def make_env():
+def make_env(no_positive_rews: bool = False):
     def _init():
         base_env = MariNav(
             pairs=PAIR_LIST,
@@ -65,6 +63,7 @@ def make_env():
             h3_resolution=H3_RESOLUTION,
             wind_threshold=22,
             render_mode="human",
+            no_positive_rews=no_positive_rews,
         )
         base_env.visited_path_counts = global_visited_path_counts
         base_env.pair_selection_counts = global_pair_selection_counts
@@ -74,7 +73,17 @@ def make_env():
 
 
 if __name__ == "__main__":
-    mp.set_start_method("fork", force=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--seed", type=int, default=31, help="Random seed for reproducibility"
+    )
+    parser.add_argument(
+        "--no-positive-rews", action="store_true", help="Disable positive rewards"
+    )
+    args = parser.parse_args()
+    seed = args.seed
+    no_positive_rews = args.no_positive_rews
+    # mp.set_start_method("fork", force=True)
 
     print(f"Loading wind map from {WIND_MAP_PATH}...")
     full_wind_map = load_full_wind_map(WIND_MAP_PATH)
@@ -84,7 +93,9 @@ if __name__ == "__main__":
 
     # 1. Wrap the base environment to include observation history
     envs = 16
-    vec_env = SubprocVecEnv([make_env() for _ in range(envs)])
+    vec_env = SubprocVecEnv(
+        [make_env(no_positive_rews=no_positive_rews) for _ in range(envs)]
+    )
     vec_env = VecNormalize(vec_env, norm_obs=False, norm_reward=True, clip_reward=10.0)
 
     # 2. Define policy architecture and features extractor
@@ -95,7 +106,7 @@ if __name__ == "__main__":
     # Define a log directory for TensorBoard
     learning_rate_schedule = get_linear_fn(start=7e-4, end=1e-5, end_fraction=1.0)
     # 3. Instantiate PPO model
-    seed = 4  # For reproducibility
+    log_prefix = "PPO_Masked_no_positive" if no_positive_rews else "PPO_Masked"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model = MaskablePPO(
         policy="MlpPolicy",
@@ -107,7 +118,7 @@ if __name__ == "__main__":
         n_steps=1024,
         batch_size=64,
         n_epochs=10,
-        tensorboard_log=f"./tensorboard_logs/logs_PPO_Masked{seed}_{timestamp}/",
+        tensorboard_log=f"./tensorboard_logs/{log_prefix}_{seed}_{timestamp}/",
         device="cpu",
         seed=seed,  # For reproducibility
     )
@@ -121,8 +132,8 @@ if __name__ == "__main__":
 
     eval_callback = EvalCallback(
         eval_env=vec_env,  # Wrap with Monitor
-        best_model_save_path=f"./ppo_gulf_tanker_PPO_MASKED_10_500_000_{timestamp}",
-        log_path="./eval_logs",  # important!
+        best_model_save_path=f"./models/{log_prefix}_6_500_000_{timestamp}",
+        log_path=f"./eval_logs/{log_prefix}",  # important!
         eval_freq=8000,
         deterministic=False,
         render=False,
@@ -130,17 +141,25 @@ if __name__ == "__main__":
 
     # Set up Early Stopping Callback
     early_stop = EarlyStoppingCallback(
-        log_path="./eval_logs",
+        log_path=f"./eval_logs/{log_prefix}",
         patience=DEFAULT_PATIENCE,
         min_delta=2.0,
         check_freq=16000,
     )
 
+
     step_logger = StepRewardLoggerCallback()
     info_logging_callback = InfoLoggingCallback()
+    ep_stat_callback = EpisodeStatsCallback()
 
     callback = CallbackList(
-        [eval_callback, early_stop, step_logger, info_logging_callback]
+        [
+            eval_callback,
+            early_stop,
+            step_logger,
+            info_logging_callback,
+            ep_stat_callback,
+        ]
     )
 
     # Train the model
