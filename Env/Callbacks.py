@@ -194,7 +194,6 @@ class InfoLoggingCallback(BaseCallback):
             self.logger.record(tb_key, info_dict[key])
 
 
-
 class EpisodeStatsCallback(BaseCallback):
     """
     Reproduce SB3's ep_rew_mean logic, but using info["epi"].

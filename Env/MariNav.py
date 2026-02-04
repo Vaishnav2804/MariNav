@@ -304,7 +304,7 @@ class MariNav(gym.Env):
 
         random_day = np.random.randint(1, 30)
         random_hour = np.random.randint(0, 24)
-        self.current_time = datetime(2022, 8, random_day, random_hour, 0)
+        self.current_time = datetime(2024, 8, random_day, random_hour, 0)
         self.episode_start_time = self.current_time
 
         total_distance_m = self.shortest_path_length(self.start_h3, self.goal_h3)
@@ -407,7 +407,7 @@ class MariNav(gym.Env):
         wind_direction = np.arctan2(wind_v, wind_u)  # Radians
 
         return wind_u, wind_v, wind_speed, wind_direction
-    
+
     def _finalize_epi(self, info: dict) -> dict:
         """
         Attach episode statistics to info when an episode ends.
@@ -434,7 +434,6 @@ class MariNav(gym.Env):
             }
         )
         return info
-
 
     def step(
         self, action: tuple[int, int]
