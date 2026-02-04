@@ -1,9 +1,11 @@
 <img src="https://github.com/user-attachments/assets/9e15dfe7-102f-4990-8488-deb7ae480a14" alt="A log" width="150" height="200"> &nbsp; &nbsp; &nbsp;  <img width="150" height="200" alt="Media (1)" src="https://github.com/user-attachments/assets/93748423-f317-44e1-98ab-4b6b1a45be77" /> &nbsp; &nbsp; &nbsp; <img width="150" height="200" alt="Media (1)" src="https://github.com/user-attachments/assets/9c57c4f6-83c4-4d9c-9a3e-db9588ea1065"/>
 
 # MariNav - Maritime Route Optimization using Reinforcement Learning!
+> IEEE International Conference on Big Data (BigData'25) — Regular Paper (to appear)
 
+`MariNav` is a reinforcement learning (RL) environment built to simulate and optimize tanker navigation across oceanic routes represented by H3 hexagonal grids. It integrates real-world wind data, historical route frequencies, and fuel consumption models, allowing agents to learn efficient and realistic maritime paths under environmental constraints. 
 
-`MariNav` is a reinforcement learning (RL) environment built to simulate and optimize tanker navigation across oceanic routes represented by H3 hexagonal grids. It integrates real-world wind data, historical route frequencies, and fuel consumption models, allowing agents to learn efficient and realistic maritime paths under environmental constraints.
+Link to the research paper: [https://arxiv.org/pdf/2509.01838](https://arxiv.org/pdf/2509.01838)
 
 **This environment is compatible with `PPO` and `MaskablePPO` from Stable-Baselines3 and `sb3-contrib`, making it suitable for training with or without action masking support.** It also supports intrinsic exploration techniques such as `RND` (Random Network Distillation) from the `rllte.xplore.reward` module.
 
